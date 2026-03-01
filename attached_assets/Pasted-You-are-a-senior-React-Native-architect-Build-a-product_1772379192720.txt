@@ -1,0 +1,470 @@
+You are a senior React Native architect.
+Build a production-ready React Native (Expo + TypeScript) mobile application for an Auction & Buy-Sell Vehicle platform.
+
+The application must be:
+
+Secure (JWT handling, secure storage)
+
+Optimized (FlatList, memoization, proper state management)
+
+Clean architecture
+
+Smooth UX
+
+Scalable
+
+Modular folder structure
+
+Follow best practices
+
+1️⃣ TECH STACK (MANDATORY)
+
+Use:
+
+React Native with Expo
+
+TypeScript
+
+React Navigation (Native Stack + Bottom Tabs)
+
+Axios (API layer)
+
+React Query (TanStack Query) for data fetching
+
+Zustand (lightweight state management)
+
+React Hook Form + Zod validation
+
+SecureStore (for token storage)
+
+Reanimated (for smooth animations)
+
+DayJS (for auction timers)
+
+Context for Auth state
+
+ESLint + Prettier configuration
+
+2️⃣ FOLDER STRUCTURE
+
+Create clean scalable structure:
+
+src/
+ ├── api/
+ │    ├── axios.ts
+ │    ├── auth.api.ts
+ │    ├── home.api.ts
+ │    ├── live.api.ts
+ │    ├── buynow.api.ts
+ │    ├── deals.api.ts
+ │    ├── profile.api.ts
+ │    └── subscription.api.ts
+ │
+ ├── components/
+ │    ├── cards/
+ │    ├── buttons/
+ │    ├── inputs/
+ │    ├── modals/
+ │    └── subscription/
+ │
+ ├── screens/
+ │    ├── auth/
+ │    ├── home/
+ │    ├── live/
+ │    ├── buyNow/
+ │    ├── deals/
+ │    ├── profile/
+ │    └── subscription/
+ │
+ ├── navigation/
+ │    ├── RootNavigator.tsx
+ │    ├── AuthNavigator.tsx
+ │    └── TabNavigator.tsx
+ │
+ ├── store/
+ │    ├── auth.store.ts
+ │    └── subscription.store.ts
+ │
+ ├── hooks/
+ ├── types/
+ ├── utils/
+ └── constants/
+3️⃣ AUTHENTICATION FLOW
+Step 1 – Register Screen
+
+Fields:
+
+Full Name
+
+Phone Number
+
+Email
+
+Password
+
+After submission:
+
+→ Open OTP screen
+
+Step 2 – OTP Screen
+
+Show:
+
+Prefilled phone number
+
+Enter Phone OTP
+
+Prefilled email
+
+Enter Email OTP
+
+When both verified:
+
+Call backend → status becomes PENDING_APPROVAL
+
+Step 3 – Pending Screen
+
+Display:
+
+"Your account is under admin approval"
+
+Poll every 10 seconds:
+
+GET /auth/status
+
+Admin statuses:
+
+ACCEPTED → allow login
+
+REJECTED → show rejection message
+
+BLOCKED → show blocked message
+
+Step 4 – Login
+
+Only ACCEPTED users can access app.
+
+Store JWT securely using:
+
+SecureStore
+4️⃣ MAIN APP STRUCTURE
+
+After login show Bottom Tab Navigator:
+
+Home
+
+Live
+
+Buy Now
+
+Deals
+
+Profile
+
+5️⃣ HOME SCREEN
+
+Fetch from:
+
+GET http://localhost:8001/user/home
+
+Use provided structure:
+
+featured[]
+
+recent.data[]
+
+categories[]
+
+Display:
+
+Featured Horizontal Scroll
+
+Categories Chips
+
+Recent Grid List
+
+Use FlatList optimized with:
+
+keyExtractor
+
+getItemLayout
+
+memoized card components
+
+6️⃣ DUMMY APIs (CREATE THESE)
+
+Since Live, Buy Now, Deals, Profile APIs are not built yet, create mock endpoints in code:
+
+LIVE API (Dummy)
+
+GET /user/live
+
+{
+  "success": true,
+  "data": {
+    "auctions": [
+      {
+        "id": "1",
+        "title": "2022 Honda City ZX",
+        "type": "AUCTION",
+        "currentBid": 1265000,
+        "minIncrement": 5000,
+        "bidCount": 12,
+        "auctionEnd": "2026-04-10T12:00:00.000Z",
+        "image": "https://dummyimage.com/car1"
+      },
+      {
+        "id": "2",
+        "title": "Toyota Fortuner 2021",
+        "type": "AUCTION",
+        "currentBid": 4150000,
+        "minIncrement": 10000,
+        "bidCount": 22,
+        "auctionEnd": "2026-05-01T10:00:00.000Z",
+        "image": "https://dummyimage.com/car2"
+      }
+    ]
+  }
+}
+BUY NOW API (Dummy)
+
+GET /user/buy-now
+
+{
+  "success": true,
+  "data": {
+    "vehicles": [
+      {
+        "id": "3",
+        "title": "Hyundai Creta 2023",
+        "price": 1800000,
+        "type": "BUY_NOW",
+        "image": "https://dummyimage.com/car3"
+      }
+    ]
+  }
+}
+DEALS API (Dummy)
+
+GET /user/deals
+
+{
+  "success": true,
+  "data": {
+    "myDeals": [
+      {
+        "id": "1",
+        "vehicle": "Honda City ZX",
+        "status": "WON",
+        "price": 1200000
+      },
+      {
+        "id": "2",
+        "vehicle": "Toyota Fortuner",
+        "status": "PENDING_PAYMENT",
+        "price": 4100000
+      }
+    ]
+  }
+}
+PROFILE API (Dummy)
+
+GET /user/profile
+
+{
+  "success": true,
+  "data": {
+    "fullName": "Arjun Mehta",
+    "email": "arjun@gmail.com",
+    "phone": "+91 9359588022",
+    "subscription": {
+      "status": "ACTIVE",
+      "remainingListings": 2,
+      "expiresAt": "2026-05-20T00:00:00.000Z"
+    }
+  }
+}
+7️⃣ SUBSCRIPTION FLOW
+
+Before user can:
+
+Place bid
+
+Buy vehicle
+
+Sell vehicle
+
+Check:
+
+GET /subscriptions/me
+
+If:
+
+No active subscription → show Subscription Modal
+
+remainingListings <= 0 → show Renewal Modal
+
+After purchase:
+
+Call:
+
+POST /subscriptions/purchase
+
+Allow only:
+
+4 vehicle actions per subscription
+
+Track usage locally + backend validation
+
+8️⃣ SELL VEHICLE FLOW
+
+User fills:
+
+Vehicle Title
+
+Description
+
+Category
+
+Auction or Buy Now
+
+Base Price
+
+Images
+
+Submit:
+
+POST /user/sell-request
+
+Status:
+
+PENDING_ADMIN_REVIEW
+
+Admin decides:
+
+Live Auction
+
+Buy Now Listing
+
+9️⃣ LIVE BIDDING SCREEN
+
+Show real-time countdown timer
+
+Show current bid
+
+Place Bid button
+
+Increase by minIncrement
+
+Optimizations:
+
+Memoize bid updates
+
+Debounce bid clicks
+
+Validate bid >= current + increment
+
+🔟 PERFORMANCE REQUIREMENTS
+
+Must:
+
+Use React.memo
+
+Use useCallback
+
+Use useMemo
+
+Lazy load screens
+
+Use FlashList or optimized FlatList
+
+Use Image caching
+
+Avoid unnecessary re-renders
+
+Separate business logic from UI
+
+🔐 SECURITY REQUIREMENTS
+
+Store JWT in SecureStore
+
+Axios interceptor for auth header
+
+Refresh token flow (structure ready)
+
+Form validation using Zod
+
+Prevent double submission
+
+Rate-limit bid button
+
+Handle 401 globally → logout
+
+🎨 UI REQUIREMENTS
+
+Clean minimal UI
+
+Rounded cards
+
+Elevation + shadow
+
+Smooth animations
+
+Gradient headers
+
+Proper empty states
+
+Loading skeletons
+
+Pull to refresh
+
+📦 OUTPUT REQUIREMENTS
+
+Generate:
+
+Full project setup
+
+All navigation files
+
+Auth flow
+
+Home screen with real API integration
+
+Live, Buy Now, Deals, Profile screens
+
+Subscription modal component
+
+Sell vehicle screen
+
+API service layer
+
+Zustand stores
+
+Example reusable card component
+
+Example optimized FlatList usage
+
+Code must be complete and runnable.
+
+⚡ EXTRA
+
+Add:
+
+Countdown timer hook
+
+Currency formatter helper
+
+Date formatter helper
+
+Global error handler
+
+Toast notification system
+
+FINAL INSTRUCTION
+
+Write production-quality code with comments explaining architecture decisions.
+
+Do not write partial code.
+Generate complete structured code blocks.
+
+I need to create a mobile application using react native. Take a referance of Screenshort for UI
