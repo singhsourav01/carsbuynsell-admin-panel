@@ -157,6 +157,14 @@ export default function LoginScreen() {
           <Text style={styles.demoHint}>Instantly access the app with sample data</Text>
         </View>
 
+        {/* Sign Up Link */}
+        <View style={styles.signupRow}>
+          <Text style={styles.signupText}>New here? </Text>
+          <Pressable onPress={() => router.push("/(auth)/register")} hitSlop={8}>
+            <Text style={styles.signupLink}>CREATE ACCOUNT</Text>
+          </Pressable>
+        </View>
+
         {/* Footer */}
         <Text style={styles.footer}>
           Powered by <Text style={styles.footerBold}>Raj Motors</Text>
@@ -272,6 +280,9 @@ const styles = StyleSheet.create({
   },
   demoBtnText: { fontSize: 15, fontFamily: "Urbanist_700Bold", color: Colors.primary },
   demoHint: { fontSize: 12, fontFamily: "Urbanist_400Regular", color: Colors.textMuted, textAlign: "center" },
+  signupRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 12 },
+  signupText: { fontSize: 14, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary },
+  signupLink: { fontSize: 13, fontFamily: "Urbanist_700Bold", color: Colors.primary, letterSpacing: 0.5 },
   footer: { fontSize: 13, fontFamily: "Urbanist_400Regular", color: Colors.textMuted, marginTop: "auto" },
   footerBold: { fontFamily: "Urbanist_700Bold", color: Colors.text },
 });

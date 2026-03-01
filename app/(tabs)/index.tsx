@@ -35,7 +35,7 @@ interface HomeData {
 const QUICK_ACTIONS = [
   { id: "live", icon: "hammer-outline", label: "VIEW LIVE\nAUCTIONS", color: "#FF6B6B", bg: "#FFF0F0", route: "/(tabs)/live" },
   { id: "buynow", icon: "flash-outline", label: "BUY NOW\nCARS", color: "#4361EE", bg: "#EEF2FF", route: "/(tabs)/buynow" },
-  { id: "deals", icon: "handshake-outline", label: "MY\nDEALS", color: "#F59E0B", bg: "#FFFBEB", route: "/(tabs)/deals" },
+  { id: "deals", icon: "receipt-outline", label: "MY\nDEALS", color: "#F59E0B", bg: "#FFFBEB", route: "/(tabs)/deals" },
 ] as const;
 
 function FeaturedCard({ item, isActive }: { item: any; isActive: boolean }) {

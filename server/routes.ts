@@ -6,7 +6,10 @@ interface User {
   fullName: string;
   email: string;
   phone: string;
-  status: "PENDING_APPROVAL" | "ACCEPTED" | "REJECTED" | "BLOCKED";
+  password: string;
+  status: "PENDING_PHONE" | "PENDING_EMAIL" | "PENDING_APPROVAL" | "ACCEPTED" | "REJECTED" | "BLOCKED";
+  phoneVerified: boolean;
+  emailVerified: boolean;
 }
 
 const users: Record<string, User> = {
@@ -15,62 +18,195 @@ const users: Record<string, User> = {
     fullName: "Demo User",
     email: "demo@autobid.in",
     phone: "+91 9999999999",
+    password: "demo123",
     status: "ACCEPTED",
+    phoneVerified: true,
+    emailVerified: true,
   },
 };
 
 const sessions: Record<string, string> = {};
-const pendingOtps: Record<string, { phone: string; userId: string }> = {};
+// In-memory OTPs: userId → { phoneOtp, emailOtp }
+const otpStore: Record<string, { phoneOtp: string; emailOtp: string }> = {};
 
 function generateToken(): string {
   return Math.random().toString(36).substring(2) + Date.now().toString(36);
 }
 
+function generateOtp(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
 
-  // --- PHONE-BASED AUTH ---
+  // ──────────────────────────────────────────────
+  // SIGN UP / REGISTRATION
+  // ──────────────────────────────────────────────
+
+  // Step 1: Register — collect details, create pending user, generate OTPs
+  app.post("/api/auth/register", (req: Request, res: Response) => {
+    const { fullName, phone, email, password } = req.body;
+    if (!fullName || !phone || !email || !password) {
+      return res.status(400).json({ success: false, message: "All fields are required" });
+    }
+
+    const existingPhone = Object.values(users).find((u) => u.phone === phone);
+    if (existingPhone) {
+      return res.status(409).json({ success: false, message: "This phone number is already registered" });
+    }
+    const existingEmail = Object.values(users).find((u) => u.email === email.toLowerCase());
+    if (existingEmail) {
+      return res.status(409).json({ success: false, message: "This email is already registered" });
+    }
+
+    const id = Date.now().toString();
+    users[id] = {
+      id,
+      fullName: fullName.trim(),
+      email: email.trim().toLowerCase(),
+      phone: phone.trim(),
+      password,
+      status: "PENDING_PHONE",
+      phoneVerified: false,
+      emailVerified: false,
+    };
+
+    // For demo, OTPs are fixed (123456 for phone, 654321 for email)
+    // In production these would be sent via SMS/email
+    const phoneOtp = "123456";
+    const emailOtp = "654321";
+    otpStore[id] = { phoneOtp, emailOtp };
+
+    console.log(`[SIGNUP] New user: ${fullName} | Phone OTP: ${phoneOtp} | Email OTP: ${emailOtp}`);
+
+    res.json({
+      success: true,
+      data: {
+        userId: id,
+        phone: users[id].phone,
+        email: users[id].email,
+        message: "Account created. Please verify your phone number.",
+      },
+    });
+  });
+
+  // Step 2a: Verify phone OTP
+  app.post("/api/auth/verify-phone", (req: Request, res: Response) => {
+    const { userId, otp } = req.body;
+    const user = users[userId];
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    const stored = otpStore[userId];
+    // Accept fixed demo OTP or actual stored OTP
+    const isValid = otp === "123456" || otp === stored?.phoneOtp;
+    if (!isValid) {
+      return res.status(400).json({ success: false, message: "Invalid OTP. Use 123456 for demo." });
+    }
+
+    user.phoneVerified = true;
+    user.status = "PENDING_EMAIL";
+
+    res.json({
+      success: true,
+      data: {
+        userId,
+        email: user.email,
+        message: "Phone verified! Please verify your email.",
+      },
+    });
+  });
+
+  // Step 2b: Verify email OTP
+  app.post("/api/auth/verify-email", (req: Request, res: Response) => {
+    const { userId, otp } = req.body;
+    const user = users[userId];
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+    if (!user.phoneVerified) {
+      return res.status(400).json({ success: false, message: "Please verify your phone first" });
+    }
+
+    const stored = otpStore[userId];
+    // Accept fixed demo OTP or actual stored OTP
+    const isValid = otp === "654321" || otp === "123456" || otp === stored?.emailOtp;
+    if (!isValid) {
+      return res.status(400).json({ success: false, message: "Invalid OTP. Use 654321 for demo." });
+    }
+
+    user.emailVerified = true;
+    user.status = "PENDING_APPROVAL";
+
+    // Clean up OTP store
+    delete otpStore[userId];
+
+    res.json({
+      success: true,
+      data: {
+        userId,
+        status: "PENDING_APPROVAL",
+        message: "Email verified! Your account is pending admin approval.",
+      },
+    });
+  });
+
+  // Resend OTP (phone or email)
+  app.post("/api/auth/resend-otp", (req: Request, res: Response) => {
+    const { userId, type } = req.body; // type: "phone" | "email"
+    const user = users[userId];
+    if (!user) return res.status(404).json({ success: false, message: "User not found" });
+
+    if (!otpStore[userId]) {
+      otpStore[userId] = { phoneOtp: "123456", emailOtp: "654321" };
+    }
+
+    const hint = type === "email" ? "654321" : "123456";
+    res.json({
+      success: true,
+      data: { message: `OTP resent. Demo OTP: ${hint}` },
+    });
+  });
+
+  // ──────────────────────────────────────────────
+  // PHONE LOGIN (for existing users)
+  // ──────────────────────────────────────────────
 
   app.post("/api/auth/request-otp", (req: Request, res: Response) => {
     const { phone } = req.body;
     if (!phone) return res.status(400).json({ success: false, message: "Phone number required" });
 
-    // find existing or create new pending user
-    let user = Object.values(users).find((u) => u.phone === phone);
+    const user = Object.values(users).find((u) => u.phone === phone);
     if (!user) {
-      const id = Date.now().toString();
-      user = { id, fullName: "New User", email: `${id}@autobid.in`, phone, status: "PENDING_APPROVAL" };
-      users[id] = user;
+      return res.status(404).json({ success: false, message: "No account found with this number. Please sign up first." });
     }
 
-    const otpKey = generateToken().substring(0, 8);
-    pendingOtps[otpKey] = { phone, userId: user.id };
+    if (user.status === "PENDING_PHONE" || user.status === "PENDING_EMAIL") {
+      return res.status(403).json({ success: false, message: "Please complete your account verification first." });
+    }
+    if (user.status === "PENDING_APPROVAL") {
+      return res.status(403).json({ success: false, message: "Account is pending admin approval.", pendingApproval: true });
+    }
+    if (user.status === "REJECTED") return res.status(403).json({ success: false, message: "Account has been rejected." });
+    if (user.status === "BLOCKED") return res.status(403).json({ success: false, message: "Account has been blocked." });
 
-    res.json({ success: true, data: { otpKey, phone, userId: user.id } });
+    if (!otpStore[user.id]) otpStore[user.id] = { phoneOtp: "123456", emailOtp: "654321" };
+
+    res.json({ success: true, data: { userId: user.id, phone } });
   });
 
   app.post("/api/auth/verify-phone-otp", (req: Request, res: Response) => {
     const { userId, otp } = req.body;
     const user = users[userId];
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
+    if (user.status !== "ACCEPTED") return res.status(403).json({ success: false, message: "Account is not active yet." });
 
-    // demo OTP: any 6-digit number works, or 123456 / 1234
-    const isValid = otp && (otp === "123456" || otp === "1234" || /^\d{4,6}$/.test(otp));
+    const isValid = otp && /^\d{4,6}$/.test(otp);
     if (!isValid) return res.status(400).json({ success: false, message: "Invalid OTP. Use 123456 for demo." });
-
-    if (user.status === "REJECTED") return res.status(403).json({ success: false, message: "Account rejected" });
-    if (user.status === "BLOCKED") return res.status(403).json({ success: false, message: "Account blocked" });
-
-    // auto-accept new users for demo
-    if (user.status === "PENDING_APPROVAL") {
-      user.status = "ACCEPTED";
-    }
 
     const token = generateToken();
     sessions[token] = user.id;
     res.json({ success: true, data: { token, user: { id: user.id, fullName: user.fullName, email: user.email, phone: user.phone } } });
   });
 
-  // Demo login - instant access
+  // Demo login — instant access
   app.post("/api/auth/demo-login", (_req: Request, res: Response) => {
     const token = generateToken();
     sessions[token] = "demo";
@@ -90,25 +226,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ success: true });
   });
 
-  // --- HOME ---
+  // ──────────────────────────────────────────────
+  // HOME
+  // ──────────────────────────────────────────────
 
   app.get("/api/user/home", (_req: Request, res: Response) => {
     res.json({
       success: true,
       data: {
         featured: [
-          { id: "f1", title: "2021 2021 Toyota Fortuner L...", type: "AUCTION", currentBid: 3800000, image: "https://images.unsplash.com/photo-1520031441872-265e4ff70366?w=600", auctionEnd: "2026-04-15T18:00:00.000Z", bidCount: 34 },
-          { id: "f2", title: "2023 2023 Hyundai Creta SX", type: "BUY_NOW", price: 1580000, image: "https://images.unsplash.com/photo-1546614042-7df3c24c9e5d?w=600" },
+          { id: "f1", title: "2021 Toyota Fortuner Legend", type: "AUCTION", currentBid: 3800000, image: "https://images.unsplash.com/photo-1520031441872-265e4ff70366?w=600", auctionEnd: "2026-04-15T18:00:00.000Z", bidCount: 34 },
+          { id: "f2", title: "2023 Hyundai Creta SX", type: "BUY_NOW", price: 1580000, image: "https://images.unsplash.com/photo-1546614042-7df3c24c9e5d?w=600" },
           { id: "f3", title: "2022 BMW 3 Series M Sport", type: "AUCTION", currentBid: 5200000, image: "https://images.unsplash.com/photo-1555215695-3004980ad54e?w=600", auctionEnd: "2026-04-20T12:00:00.000Z", bidCount: 51 },
           { id: "f4", title: "2023 Tata Nexon EV Max", type: "BUY_NOW", price: 2050000, image: "https://images.unsplash.com/photo-1593941707882-a5bba14938c7?w=600" },
         ],
         categories: [
-          { id: "all", label: "All" },
-          { id: "sedan", label: "Sedan" },
-          { id: "suv", label: "SUV" },
-          { id: "luxury", label: "Luxury" },
-          { id: "sports", label: "Sports" },
-          { id: "electric", label: "Electric" },
+          { id: "all", label: "All" }, { id: "sedan", label: "Sedan" }, { id: "suv", label: "SUV" },
+          { id: "luxury", label: "Luxury" }, { id: "sports", label: "Sports" }, { id: "electric", label: "Electric" },
         ],
         recent: {
           data: [
@@ -124,7 +258,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // --- LIVE AUCTIONS ---
+  // ──────────────────────────────────────────────
+  // LIVE AUCTIONS
+  // ──────────────────────────────────────────────
 
   app.get("/api/user/live", (_req: Request, res: Response) => {
     res.json({
@@ -145,7 +281,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ success: true, data: { newBid: bidAmount, bidCount: Math.floor(Math.random() * 10) + 20, message: "Bid placed successfully!" } });
   });
 
-  // --- BUY NOW ---
+  // ──────────────────────────────────────────────
+  // BUY NOW
+  // ──────────────────────────────────────────────
 
   app.get("/api/user/buy-now", (_req: Request, res: Response) => {
     res.json({
@@ -165,7 +303,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ success: true, data: { dealId: generateToken(), message: "Purchase initiated successfully!" } });
   });
 
-  // --- DEALS ---
+  // ──────────────────────────────────────────────
+  // DEALS
+  // ──────────────────────────────────────────────
 
   app.get("/api/user/deals", (_req: Request, res: Response) => {
     res.json({
@@ -181,7 +321,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // --- PROFILE ---
+  // ──────────────────────────────────────────────
+  // PROFILE
+  // ──────────────────────────────────────────────
 
   app.get("/api/user/profile", (req: Request, res: Response) => {
     const auth = req.headers.authorization;
@@ -200,7 +342,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // --- SUBSCRIPTIONS ---
+  // ──────────────────────────────────────────────
+  // SUBSCRIPTIONS
+  // ──────────────────────────────────────────────
 
   app.get("/api/subscriptions/me", (_req: Request, res: Response) => {
     res.json({
@@ -217,7 +361,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // --- SELL VEHICLE ---
+  // ──────────────────────────────────────────────
+  // SELL VEHICLE
+  // ──────────────────────────────────────────────
 
   app.post("/api/user/sell-request", (req: Request, res: Response) => {
     const { title, basePrice } = req.body;
