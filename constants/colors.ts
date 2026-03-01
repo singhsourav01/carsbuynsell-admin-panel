@@ -1,27 +1,28 @@
-const ORANGE = "#FF6B2C";
-const DARK_BG = "#0D0D18";
-const CARD_BG = "#16162A";
-const CARD_BORDER = "#252540";
-
 export const Colors = {
-  primary: ORANGE,
-  background: DARK_BG,
-  card: CARD_BG,
-  cardBorder: CARD_BORDER,
-  surface: "#1E1E38",
-  text: "#FFFFFF",
-  textSecondary: "#9999BB",
-  textMuted: "#555577",
-  success: "#22C55E",
+  background: "#EEF2F8",
+  card: "#FFFFFF",
+  cardBorder: "#E8ECF4",
+  surface: "#F3F6FC",
+  hero: "#3D5BD9",
+  heroLight: "#5470E8",
+  heroDark: "#2947C4",
+  navy: "#1C2B4A",
+  primary: "#3D5BD9",
+  primaryLight: "#EEF2FF",
+  text: "#1A1E2E",
+  textSecondary: "#6B7280",
+  textMuted: "#9CA3AF",
+  success: "#10B981",
   danger: "#EF4444",
   warning: "#F59E0B",
   info: "#3B82F6",
-  tint: ORANGE,
-  tabIconDefault: "#555577",
-  tabIconSelected: ORANGE,
-  inputBg: "#1E1E38",
-  inputBorder: "#303055",
-  overlay: "rgba(13,13,24,0.92)",
+  actionBtn: "#607991",
+  inputBg: "#F3F6FC",
+  inputBorder: "#DDE3EE",
+  overlay: "rgba(28,43,74,0.85)",
+  tint: "#3D5BD9",
+  tabIconDefault: "#9CA3AF",
+  tabIconSelected: "#3D5BD9",
 };
 
 export default {

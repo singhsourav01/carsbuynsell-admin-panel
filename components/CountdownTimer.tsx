@@ -9,19 +9,13 @@ interface CountdownTimerProps {
   onExpire?: () => void;
 }
 
-export const CountdownTimer = React.memo(function CountdownTimer({
-  endDate,
-  compact = false,
-  onExpire,
-}: CountdownTimerProps) {
+export const CountdownTimer = React.memo(function CountdownTimer({ endDate, compact = false, onExpire }: CountdownTimerProps) {
   const [timeLeft, setTimeLeft] = useState(() => formatCountdown(endDate));
 
   const tick = useCallback(() => {
     const next = formatCountdown(endDate);
     setTimeLeft(next);
-    if (next.expired && onExpire) {
-      onExpire();
-    }
+    if (next.expired && onExpire) onExpire();
   }, [endDate, onExpire]);
 
   useEffect(() => {
@@ -30,19 +24,13 @@ export const CountdownTimer = React.memo(function CountdownTimer({
   }, [tick]);
 
   if (timeLeft.expired) {
-    return (
-      <View style={styles.expiredBadge}>
-        <Text style={styles.expiredText}>ENDED</Text>
-      </View>
-    );
+    return <View style={styles.expiredBadge}><Text style={styles.expiredText}>ENDED</Text></View>;
   }
 
   if (compact) {
     return (
-      <View style={styles.compactRow}>
-        <Text style={styles.compactTime}>
-          {timeLeft.hours}:{timeLeft.minutes}:{timeLeft.seconds}
-        </Text>
+      <View style={styles.compactWrap}>
+        <Text style={styles.compactTime}>{timeLeft.hours}:{timeLeft.minutes}:{timeLeft.seconds}</Text>
       </View>
     );
   }
@@ -61,76 +49,21 @@ export const CountdownTimer = React.memo(function CountdownTimer({
 function TimeUnit({ value, label }: { value: string; label: string }) {
   return (
     <View style={styles.unit}>
-      <View style={styles.unitBox}>
-        <Text style={styles.unitValue}>{value}</Text>
-      </View>
+      <View style={styles.unitBox}><Text style={styles.unitValue}>{value}</Text></View>
       <Text style={styles.unitLabel}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  timerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  unit: {
-    alignItems: "center",
-    gap: 3,
-  },
-  unitBox: {
-    backgroundColor: Colors.surface,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-    width: 44,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  unitValue: {
-    fontSize: 16,
-    fontFamily: "Urbanist_700Bold",
-    color: Colors.primary,
-  },
-  unitLabel: {
-    fontSize: 9,
-    fontFamily: "Urbanist_600SemiBold",
-    color: Colors.textMuted,
-    letterSpacing: 0.5,
-  },
-  colon: {
-    fontSize: 18,
-    fontFamily: "Urbanist_700Bold",
-    color: Colors.primary,
-    marginBottom: 14,
-  },
-  compactRow: {
-    backgroundColor: "#FF6B2C22",
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: "#FF6B2C44",
-  },
-  compactTime: {
-    fontSize: 12,
-    fontFamily: "Urbanist_700Bold",
-    color: Colors.primary,
-  },
-  expiredBadge: {
-    backgroundColor: "#EF444422",
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: "#EF444444",
-  },
-  expiredText: {
-    fontSize: 11,
-    fontFamily: "Urbanist_700Bold",
-    color: Colors.danger,
-    letterSpacing: 1,
-  },
+  timerRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  unit: { alignItems: "center", gap: 3 },
+  unitBox: { backgroundColor: Colors.primaryLight, borderRadius: 8, width: 44, height: 40, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: Colors.primary + "33" },
+  unitValue: { fontSize: 16, fontFamily: "Urbanist_700Bold", color: Colors.primary },
+  unitLabel: { fontSize: 9, fontFamily: "Urbanist_600SemiBold", color: Colors.textMuted, letterSpacing: 0.5 },
+  colon: { fontSize: 18, fontFamily: "Urbanist_700Bold", color: Colors.primary, marginBottom: 14 },
+  compactWrap: { backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  compactTime: { fontSize: 11, fontFamily: "Urbanist_700Bold", color: "#FFD700" },
+  expiredBadge: { backgroundColor: "#FEF2F2", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  expiredText: { fontSize: 10, fontFamily: "Urbanist_700Bold", color: Colors.danger, letterSpacing: 0.5 },
 });
