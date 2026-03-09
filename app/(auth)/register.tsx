@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
-import { apiRequest } from "@/lib/auth";
+import { apiRequestDirect } from "@/lib/auth";
 
 interface FormErrors { fullName?: string; phone?: string; email?: string; password?: string; general?: string; }
 
@@ -41,6 +41,7 @@ export default function RegisterScreen() {
   const [showPass, setShowPass] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState("");
 
   const phoneRef = useRef<TextInput>(null);
   const emailRef = useRef<TextInput>(null);
@@ -60,26 +61,41 @@ export default function RegisterScreen() {
     setErrors({});
     setLoading(true);
     try {
-      const fullPhone = `+91 ${phone.replace(/\D/g, "")}`;
-      const res = await apiRequest("POST", "/api/auth/register", {
-        fullName: fullName.trim(),
-        phone: fullPhone,
+      const fullPhone = `${phone.replace(/\D/g, "")}`;
+      const res = await apiRequestDirect("POST", "http://192.168.1.102:8000/auth/signup", {
+        full_name: fullName.trim(),
         email: email.trim().toLowerCase(),
         password,
-      }, false);
-      const data = await res.json();
-      if (data.success) {
+        phone: fullPhone,
+      });
+
+      // Read response as text first, then try to parse as JSON
+      const rawText = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(rawText);
+      } catch {
+        // Response is not JSON
+        data = { message: rawText || "Unexpected server response" };
+      }
+
+      if (res.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.push({
-          pathname: "/(auth)/verify-phone",
-          params: { userId: data.data.userId, phone: fullPhone, email: email.trim().toLowerCase() },
-        });
+        setSuccess(data?.message || "Account created successfully!");
+        setTimeout(() => {
+          router.push({
+            pathname: "/(auth)/verify-phone",
+            params: { phone: fullPhone, email: email.trim().toLowerCase() },
+          });
+        }, 800);
       } else {
-        setErrors({ general: data.message || "Registration failed. Please try again." });
+        // Show error message from API response
+        const apiMessage = data?.message || data?.error || `Registration failed (${res.status})`;
+        setErrors({ general: apiMessage });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
-    } catch {
-      setErrors({ general: "Network error. Please check your connection." });
+    } catch (err: any) {
+      setErrors({ general: err?.message || "Network error. Please check your connection." });
     } finally {
       setLoading(false);
     }
@@ -101,6 +117,13 @@ export default function RegisterScreen() {
 
         {/* Form Card */}
         <View style={styles.card}>
+          {success ? (
+            <View style={styles.successBox}>
+              <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+              <Text style={styles.successText}>{success}</Text>
+            </View>
+          ) : null}
+
           {errors.general ? (
             <View style={styles.alertBox}>
               <Ionicons name="alert-circle" size={16} color={Colors.danger} />
@@ -193,17 +216,6 @@ export default function RegisterScreen() {
             {errors.password ? <FieldError msg={errors.password} /> : null}
           </View>
 
-          {/* Steps progress hint */}
-          <View style={styles.stepsBox}>
-            <Text style={styles.stepsTitle}>Signup process</Text>
-            <View style={styles.stepsList}>
-              <StepItem n="1" text="Fill in your details" active />
-              <StepItem n="2" text="Verify mobile number" />
-              <StepItem n="3" text="Verify email address" />
-              <StepItem n="4" text="Await admin approval" />
-            </View>
-          </View>
-
           {/* Submit */}
           <Pressable
             style={({ pressed }) => [styles.submitBtn, { opacity: pressed ? 0.85 : 1 }]}
@@ -261,6 +273,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#FEF2F2", borderRadius: 10, padding: 12, borderWidth: 1, borderColor: "#FECACA",
   },
   alertText: { flex: 1, fontSize: 13, fontFamily: "Urbanist_500Medium", color: Colors.danger },
+  successBox: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: "#ECFDF5", borderRadius: 10, padding: 12, borderWidth: 1, borderColor: "#A7F3D0",
+  },
+  successText: { flex: 1, fontSize: 13, fontFamily: "Urbanist_500Medium", color: Colors.success },
   fieldGroup: { gap: 7 },
   fieldLabel: { fontSize: 11, fontFamily: "Urbanist_700Bold", color: Colors.textSecondary, letterSpacing: 1 },
   inputRow: {

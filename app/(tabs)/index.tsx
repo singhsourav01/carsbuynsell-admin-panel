@@ -1,4 +1,4 @@
-import React, { useState, useCallback, memo } from "react";
+import React, { useState, useCallback, useEffect, memo } from "react";
 import {
   View,
   Text,
@@ -9,8 +9,8 @@ import {
   Dimensions,
   RefreshControl,
   ActivityIndicator,
+  TextInput,
 } from "react-native";
-import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
@@ -21,17 +21,12 @@ import { Colors } from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatCurrency } from "@/utils/formatters";
 import { CountdownTimer } from "@/components/CountdownTimer";
+import { apiRequestDirect } from "@/lib/auth";
 
 const { width } = Dimensions.get("window");
 const CARD_W = (width - 48 - 12) / 2;
 
-interface HomeData {
-  featured: any[];
-  categories: any[];
-  recent: { data: any[] };
-}
-
-// Quick action buttons like in screenshot
+// Quick action buttons
 const QUICK_ACTIONS = [
   { id: "live", icon: "hammer-outline", label: "VIEW LIVE\nAUCTIONS", color: "#FF6B6B", bg: "#FFF0F0", route: "/(tabs)/live" },
   { id: "buynow", icon: "flash-outline", label: "BUY NOW\nCARS", color: "#4361EE", bg: "#EEF2FF", route: "/(tabs)/buynow" },
@@ -39,44 +34,68 @@ const QUICK_ACTIONS = [
 ] as const;
 
 function FeaturedCard({ item, isActive }: { item: any; isActive: boolean }) {
-  const isAuction = item.type === "AUCTION";
+  const isAuction = item.lst_type === "AUCTION";
+  const imageUri = item.images?.[0]?.url || item.images?.[0]?.file_url;
   return (
-    <View style={[styles.featuredCard, { width: width - 48 }]}>
-      <Image source={{ uri: item.image }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
+    <Pressable
+      onPress={() => { router.push(`/listing/${item.lst_id}` as any); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+      style={[styles.featuredCard, { width: width - 48 }]}
+    >
+      {imageUri ? (
+        <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
+      ) : (
+        <LinearGradient colors={[Colors.hero, Colors.heroDark]} style={StyleSheet.absoluteFill} />
+      )}
       <LinearGradient colors={["transparent", "rgba(0,0,0,0.75)"]} style={styles.featuredGradient} />
       <View style={styles.featuredTypeBadge}>
         <Text style={[styles.featuredTypeBadgeText, { color: isAuction ? "#FFD700" : Colors.success }]}>
           {isAuction ? "LIVE AUCTION" : "BUY NOW"}
         </Text>
       </View>
-      <View style={styles.featuredBottom}>
-        <Text style={styles.featuredTitle} numberOfLines={1}>{item.title}</Text>
-        <View style={styles.featuredPriceRow}>
-          <Text style={styles.featuredPrice}>{formatCurrency(isAuction ? item.currentBid : item.price)}</Text>
-          {isAuction && item.auctionEnd && <CountdownTimer endDate={item.auctionEnd} compact />}
+      {/* Category badge */}
+      {item.category?.cat_name && (
+        <View style={styles.featuredCatBadge}>
+          <Text style={styles.featuredCatBadgeText}>{item.category.cat_name}</Text>
         </View>
+      )}
+      <View style={styles.featuredBottom}>
+        <Text style={styles.featuredTitle} numberOfLines={1}>{item.lst_title}</Text>
+        <Text style={styles.featuredSeller} numberOfLines={1}>by {item.seller?.user_full_name || "Unknown"}</Text>
+        <View style={styles.featuredPriceRow}>
+          <Text style={styles.featuredPrice}>{formatCurrency(isAuction ? (item.lst_current_bid || item.lst_price) : item.lst_price)}</Text>
+          {isAuction && item.lst_auction_end && <CountdownTimer endDate={item.lst_auction_end} compact />}
+        </View>
+        {isAuction && item.lst_bid_count > 0 && (
+          <Text style={styles.featuredBidCount}>{item.lst_bid_count} bid{item.lst_bid_count !== 1 ? "s" : ""}</Text>
+        )}
       </View>
-    </View>
+    </Pressable>
   );
 }
 const MemoFeaturedCard = memo(FeaturedCard);
 
 function RecentCard({ item }: { item: any }) {
-  const isAuction = item.type === "AUCTION";
+  const isAuction = item.lst_type === "AUCTION";
+  const imageUri = item.images?.[0]?.url || item.images?.[0]?.file_url;
   return (
     <Pressable
-      onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+      onPress={() => { router.push(`/listing/${item.lst_id}` as any); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
       style={[styles.recentCard, { width: CARD_W }]}
     >
       <View style={styles.recentImgWrap}>
-        <Image source={{ uri: item.image }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
+        {imageUri ? (
+          <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} contentFit="cover" />
+        ) : (
+          <LinearGradient colors={[Colors.hero, Colors.heroDark]} style={StyleSheet.absoluteFill} />
+        )}
         <View style={[styles.recentBadge, { backgroundColor: isAuction ? "#FF6B6B" : Colors.success }]}>
           <Text style={styles.recentBadgeText}>{isAuction ? "LIVE" : "BUY NOW"}</Text>
         </View>
       </View>
       <View style={styles.recentInfo}>
-        <Text style={styles.recentTitle} numberOfLines={1}>{item.title}</Text>
-        <Text style={styles.recentPrice}>{formatCurrency(isAuction ? item.currentBid : item.price)}</Text>
+        <Text style={styles.recentTitle} numberOfLines={1}>{item.lst_title}</Text>
+        <Text style={styles.recentCategory} numberOfLines={1}>{item.category?.cat_name || ""}</Text>
+        <Text style={styles.recentPrice}>{formatCurrency(isAuction ? (item.lst_current_bid || item.lst_price) : item.lst_price)}</Text>
       </View>
     </Pressable>
   );
@@ -88,31 +107,82 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const [activeCategory, setActiveCategory] = useState("all");
   const [featuredIdx, setFeaturedIdx] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  const { data, isLoading, refetch, isRefetching } = useQuery<{ success: boolean; data: HomeData }>({
-    queryKey: ["/api/user/home"],
+  // API data
+  const [featured, setFeatured] = useState<any[]>([]);
+  const [recent, setRecent] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const fetchHome = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setIsRefreshing(true);
+    try {
+      const res = await apiRequestDirect("GET", "http://192.168.1.102:8002/user/home");
+      const rawText = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(rawText); } catch { data = {}; }
+      if (res.ok && data?.data) {
+        setFeatured(data.data.featured || []);
+        setRecent(data.data.recent?.data || []);
+        setCategories(data.data.categories || []);
+      }
+    } catch { /* ignore */ }
+    finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchHome(); }, [fetchHome]);
+
+  const handleRefresh = useCallback(() => { fetchHome(true); }, [fetchHome]);
+
+  // Filter by search + category
+  const query = searchQuery.trim().toLowerCase();
+
+  const filteredFeatured = query
+    ? featured.filter((item) => item.lst_title?.toLowerCase().includes(query))
+    : featured;
+
+  const filteredRecent = recent.filter((item) => {
+    const matchCategory = activeCategory === "all" || item.lst_category_id === activeCategory;
+    const matchSearch = !query || item.lst_title?.toLowerCase().includes(query);
+    return matchCategory && matchSearch;
   });
 
-  const home = data?.data;
-  const topPad = insets.top + (insets.top < 20 ? 67 : 0);
-
   const renderRecent = useCallback(({ item }: { item: any }) => <MemoRecentCard item={item} />, []);
-  const keyExtractor = useCallback((item: any) => item.id, []);
+  const keyExtractor = useCallback((item: any) => item.lst_id, []);
+
+  const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
   return (
     <View style={[styles.container, { paddingTop: topPad }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={Colors.primary} />}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={Colors.primary} />}
         contentContainerStyle={{ paddingBottom: 100 }}
       >
         {/* Blue Hero Banner */}
         <View style={styles.heroBanner}>
           <Text style={styles.heroTitle}>Find your next big profit.</Text>
-          <Text style={styles.heroSubtitle}>Browse 100+ verified dealer-exclusive listings.</Text>
+          <Text style={styles.heroSubtitle}>Browse verified dealer-exclusive listings.</Text>
           <View style={styles.heroSearch}>
-            <Ionicons name="search-outline" size={18} color={Colors.textMuted} />
-            <Text style={styles.heroSearchText}>Search make, model...</Text>
+            <Ionicons name="search-outline" size={18} color="rgba(255,255,255,0.5)" />
+            <TextInput
+              style={styles.heroSearchInput}
+              placeholder="Search make, model..."
+              placeholderTextColor="rgba(255,255,255,0.5)"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+            />
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => setSearchQuery("")}>
+                <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.6)" />
+              </Pressable>
+            )}
           </View>
         </View>
 
@@ -135,15 +205,20 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Featured Cars */}
+        {/* Featured Listings */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Featured Cars</Text>
+            <Text style={styles.sectionTitle}>Featured Listings</Text>
             <Text style={styles.premiumPicks}>PREMIUM PICKS</Text>
           </View>
           {isLoading ? (
             <View style={[styles.featuredCard, { width: width - 48, justifyContent: "center", alignItems: "center", backgroundColor: Colors.card }]}>
               <ActivityIndicator color={Colors.primary} />
+            </View>
+          ) : featured.length === 0 ? (
+            <View style={[styles.featuredCard, { width: width - 48, justifyContent: "center", alignItems: "center", backgroundColor: Colors.card }]}>
+              <Ionicons name="star-outline" size={32} color={Colors.textMuted} />
+              <Text style={{ fontSize: 14, fontFamily: "Urbanist_500Medium", color: Colors.textMuted, marginTop: 8 }}>No featured listings yet</Text>
             </View>
           ) : (
             <ScrollView
@@ -157,13 +232,13 @@ export default function HomeScreen() {
                 setFeaturedIdx(idx);
               }}
             >
-              {home?.featured.map((item, i) => <MemoFeaturedCard key={item.id} item={item} isActive={i === featuredIdx} />)}
+              {filteredFeatured.map((item, i) => <MemoFeaturedCard key={item.lst_id} item={item} isActive={i === featuredIdx} />)}
             </ScrollView>
           )}
           {/* Dots */}
-          {home?.featured && home.featured.length > 1 && (
+          {filteredFeatured.length > 1 && (
             <View style={styles.dotsRow}>
-              {home.featured.map((_, i) => (
+              {filteredFeatured.map((_, i) => (
                 <View key={i} style={[styles.dot, i === featuredIdx && styles.dotActive]} />
               ))}
             </View>
@@ -173,13 +248,19 @@ export default function HomeScreen() {
         {/* Category Chips */}
         <View style={styles.section}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScroll}>
-            {home?.categories.map((cat) => (
+            <Pressable
+              onPress={() => { setActiveCategory("all"); Haptics.selectionAsync(); }}
+              style={[styles.chip, activeCategory === "all" && styles.chipActive]}
+            >
+              <Text style={[styles.chipText, activeCategory === "all" && styles.chipTextActive]}>All</Text>
+            </Pressable>
+            {categories.map((cat) => (
               <Pressable
-                key={cat.id}
-                onPress={() => { setActiveCategory(cat.id); Haptics.selectionAsync(); }}
-                style={[styles.chip, activeCategory === cat.id && styles.chipActive]}
+                key={cat.cat_id}
+                onPress={() => { setActiveCategory(cat.cat_id); Haptics.selectionAsync(); }}
+                style={[styles.chip, activeCategory === cat.cat_id && styles.chipActive]}
               >
-                <Text style={[styles.chipText, activeCategory === cat.id && styles.chipTextActive]}>{cat.label}</Text>
+                <Text style={[styles.chipText, activeCategory === cat.cat_id && styles.chipTextActive]}>{cat.cat_name}</Text>
               </Pressable>
             ))}
           </ScrollView>
@@ -190,9 +271,14 @@ export default function HomeScreen() {
           <Text style={styles.sectionTitle}>Recent Listings</Text>
           {isLoading ? (
             <ActivityIndicator color={Colors.primary} style={{ marginTop: 20 }} />
+          ) : filteredRecent.length === 0 ? (
+            <View style={{ alignItems: "center", paddingVertical: 32 }}>
+              <Ionicons name="car-outline" size={36} color={Colors.textMuted} />
+              <Text style={{ fontSize: 14, fontFamily: "Urbanist_500Medium", color: Colors.textMuted, marginTop: 8 }}>No listings in this category</Text>
+            </View>
           ) : (
             <FlatList
-              data={home?.recent.data ?? []}
+              data={filteredRecent}
               renderItem={renderRecent}
               keyExtractor={keyExtractor}
               numColumns={2}
@@ -233,7 +319,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  heroSearchText: { fontSize: 14, fontFamily: "Urbanist_400Regular", color: "rgba(255,255,255,0.7)" },
+  heroSearchInput: { flex: 1, fontSize: 14, fontFamily: "Urbanist_400Regular", color: "#fff", padding: 0 },
   section: { marginBottom: 24 },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, marginBottom: 14 },
   sectionTitle: { fontSize: 18, fontFamily: "Urbanist_700Bold", color: Colors.text, paddingHorizontal: 16, marginBottom: 14 },
@@ -247,7 +333,7 @@ const styles = StyleSheet.create({
   quickActionLabel: { fontSize: 10, fontFamily: "Urbanist_700Bold", color: Colors.text, textAlign: "center", lineHeight: 14 },
   featuredScroll: { paddingHorizontal: 16, gap: 16 },
   featuredCard: {
-    height: 190, borderRadius: 16, overflow: "hidden", position: "relative",
+    height: 200, borderRadius: 16, overflow: "hidden", position: "relative",
     shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 4,
   },
   featuredGradient: { ...StyleSheet.absoluteFillObject, top: "30%" },
@@ -256,10 +342,17 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.55)", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4,
   },
   featuredTypeBadgeText: { fontSize: 10, fontFamily: "Urbanist_700Bold", letterSpacing: 0.5 },
-  featuredBottom: { position: "absolute", bottom: 14, left: 14, right: 14, gap: 4 },
+  featuredCatBadge: {
+    position: "absolute", top: 12, right: 12,
+    backgroundColor: "rgba(255,255,255,0.2)", borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4,
+  },
+  featuredCatBadgeText: { fontSize: 10, fontFamily: "Urbanist_600SemiBold", color: "#fff" },
+  featuredBottom: { position: "absolute", bottom: 14, left: 14, right: 14, gap: 2 },
   featuredTitle: { fontSize: 16, fontFamily: "Urbanist_700Bold", color: "#fff" },
-  featuredPriceRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  featuredSeller: { fontSize: 12, fontFamily: "Urbanist_400Regular", color: "rgba(255,255,255,0.7)" },
+  featuredPriceRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 2 },
   featuredPrice: { fontSize: 18, fontFamily: "Urbanist_700Bold", color: "#FFD700" },
+  featuredBidCount: { fontSize: 11, fontFamily: "Urbanist_500Medium", color: "rgba(255,255,255,0.6)" },
   dotsRow: { flexDirection: "row", justifyContent: "center", gap: 6, marginTop: 10 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.inputBorder },
   dotActive: { width: 18, backgroundColor: Colors.primary },
@@ -276,7 +369,8 @@ const styles = StyleSheet.create({
   recentImgWrap: { height: 110, position: "relative" },
   recentBadge: { position: "absolute", top: 8, left: 8, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3 },
   recentBadgeText: { fontSize: 9, fontFamily: "Urbanist_700Bold", color: "#fff" },
-  recentInfo: { padding: 10, gap: 4 },
-  recentTitle: { fontSize: 12, fontFamily: "Urbanist_600SemiBold", color: Colors.text },
+  recentInfo: { padding: 10, gap: 3 },
+  recentTitle: { fontSize: 13, fontFamily: "Urbanist_600SemiBold", color: Colors.text },
+  recentCategory: { fontSize: 11, fontFamily: "Urbanist_400Regular", color: Colors.textMuted },
   recentPrice: { fontSize: 14, fontFamily: "Urbanist_700Bold", color: Colors.primary },
 });

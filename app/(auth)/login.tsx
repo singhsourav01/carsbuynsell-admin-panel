@@ -9,69 +9,138 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import * as Device from "expo-device";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiRequest } from "@/lib/auth";
+import { apiRequestDirect } from "@/lib/auth";
+
+// Helper to deep-search for a key in nested object
+function findValue(obj: any, key: string): any {
+  if (!obj || typeof obj !== "object") return null;
+  if (obj[key]) return obj[key];
+  for (const k of Object.keys(obj)) {
+    const found = findValue(obj[k], key);
+    if (found) return found;
+  }
+  return null;
+}
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { login } = useAuth();
   const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [demoLoading, setDemoLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
-  const handleGetOtp = async () => {
-    const cleaned = phone.replace(/\D/g, "");
-    if (cleaned.length < 10) {
-      setError("Please enter a valid 10-digit mobile number");
+  const registerDevice = async (data: any) => {
+    try {
+      console.log("=== SIGNIN RESPONSE DATA ===", JSON.stringify(data, null, 2));
+
+      const userId = findValue(data, "id") || findValue(data, "user_id") || findValue(data, "userId");
+      const accessToken = findValue(data, "access_token") || findValue(data, "token");
+      const refreshToken = findValue(data, "refresh_token") || findValue(data, "refreshToken");
+
+      const deviceName = Device.modelName || Device.deviceName || "Unknown Device";
+      const deviceType = Platform.OS === "ios" ? "IOS" : "ANDROID";
+
+      const payload = {
+        uld_user_id: userId || "",
+        uld_fcm_token: "not-available",
+        uld_device_name: deviceName,
+        uld_device_type: deviceType,
+        uld_access_token: accessToken || "",
+        uld_refresh_token: refreshToken || "",
+      };
+      console.log("=== DEVICE REGISTRATION PAYLOAD ===", JSON.stringify(payload, null, 2));
+
+      const res = await apiRequestDirect("POST", "http://192.168.1.102:8002/user/user-device", payload);
+      const resText = await res.text();
+      console.log("=== DEVICE REGISTRATION RESPONSE ===", res.status, resText);
+    } catch (err: any) {
+      console.log("=== DEVICE REGISTRATION ERROR ===", err?.message || err);
+    }
+  };
+
+  const handleSignin = async () => {
+    const cleaned = phone.trim();
+    if (!cleaned) {
+      setError("Please enter your email or mobile number");
+      return;
+    }
+    if (!password) {
+      setError("Please enter your password");
       return;
     }
     setError("");
+    setSuccess("");
     setLoading(true);
     try {
-      const fullPhone = `+91 ${cleaned}`;
-      const res = await apiRequest("POST", "/api/auth/request-otp", { phone: fullPhone }, false);
-      const data = await res.json();
-      if (data.success) {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        router.push({
-          pathname: "/(auth)/otp",
-          params: { userId: data.data.userId, phone: fullPhone },
-        });
+      // If it looks like an email, send as-is; otherwise just digits
+      const isEmail = cleaned.includes("@");
+      const userDetail = isEmail ? cleaned : `${cleaned.replace(/\D/g, "")}`;
+
+      const res = await apiRequestDirect("POST", "http://192.168.1.102:8000/auth/signin", {
+        user_details: userDetail,
+        password,
+      });
+
+      const rawText = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
+
+      if (res.ok) {
+
+        // Extract token from known response paths
+        const token =
+          data?.access_token ||
+          data?.data?.access_token ||
+          data?.token ||
+          data?.data?.token ||
+          data?.data?.uld_access_token;
+
+        const refreshToken =
+          data?.refresh_token ||
+          data?.data?.refresh_token ||
+          data?.data?.uld_refresh_token;
+
+        const userData = data?.user || data?.data?.user || data?.data;
+
+        // Only store if it looks like a real JWT
+        if (token && typeof token === "string" && token.startsWith("eyJ")) {
+          await login(token, userData || { id: "", fullName: "", email: "", phone: "" }, refreshToken || undefined);
+        }
+
+        // Register device in background
+        registerDevice(data);
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setSuccess(data?.message || "Login successful! Redirecting...");
+        setTimeout(() => router.replace("/(tabs)"), 800);
       } else {
-        setError(data.message || "Failed to send OTP");
+        // Show API error message (not approved, not verified, etc.)
+        const apiMessage = data?.message || data?.error || "Sign in failed. Please try again.";
+        setError(apiMessage);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
-    } catch {
-      setError("Network error. Please try again.");
+    } catch (err: any) {
+      setError(err?.message || "Network error. Please check your connection.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDemoLogin = async () => {
-    setDemoLoading(true);
-    try {
-      const res = await apiRequest("POST", "/api/auth/demo-login", {}, false);
-      const data = await res.json();
-      if (data.success) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        await login(data.data.token, data.data.user);
-        router.replace("/(tabs)");
-      }
-    } catch {
-      setError("Demo login failed. Please try again.");
-    } finally {
-      setDemoLoading(false);
-    }
-  };
+  // Demo login commented out — no longer using old API
+  // const handleDemoLogin = async () => { ... };
 
   return (
     <KeyboardAvoidingView
@@ -94,6 +163,13 @@ export default function LoginScreen() {
 
         {/* Form Card */}
         <View style={styles.card}>
+          {success ? (
+            <View style={styles.successBox}>
+              <Ionicons name="checkmark-circle-outline" size={15} color={Colors.success} />
+              <Text style={styles.successText}>{success}</Text>
+            </View>
+          ) : null}
+
           {error ? (
             <View style={styles.errorBox}>
               <Ionicons name="alert-circle-outline" size={15} color={Colors.danger} />
@@ -101,39 +177,55 @@ export default function LoginScreen() {
             </View>
           ) : null}
 
-          <Text style={styles.fieldLabel}>ENTER MOBILE NUMBER</Text>
+          <Text style={styles.fieldLabel}>ENTER EMAIL OR MOBILE NUMBER</Text>
           <View style={styles.phoneRow}>
             <View style={styles.countryCode}>
               <Text style={styles.countryCodeText}>+91</Text>
             </View>
             <TextInput
               style={styles.phoneInput}
-              placeholder="98765 43210"
+              placeholder="Email or 10-digit number"
               placeholderTextColor={Colors.textMuted}
               value={phone}
               onChangeText={setPhone}
-              keyboardType="phone-pad"
-              maxLength={10}
+              keyboardType="default"
+              autoCapitalize="none"
+              returnKeyType="next"
+              onSubmitEditing={() => { }}
+            />
+          </View>
+          <Text style={styles.fieldLabel}>ENTER PASSWORD</Text>
+          <View style={styles.phoneRow}>
+
+            <TextInput
+              style={styles.phoneInput}
+              placeholder="Admin@123"
+              placeholderTextColor={Colors.textMuted}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={true}
+              keyboardType="default"
+              maxLength={15}
               returnKeyType="done"
-              onSubmitEditing={handleGetOtp}
+              onSubmitEditing={handleSignin}
             />
           </View>
 
           <Pressable
             style={({ pressed }) => [styles.otpBtn, { opacity: pressed ? 0.85 : 1 }]}
-            onPress={handleGetOtp}
+            onPress={handleSignin}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.otpBtnText}>GET OTP</Text>
+              <Text style={styles.otpBtnText}>SUBMIT</Text>
             )}
           </Pressable>
         </View>
 
         {/* Demo Login */}
-        <View style={styles.demoSection}>
+        {/* <View style={styles.demoSection}>
           <View style={styles.dividerRow}>
             <View style={styles.divider} />
             <Text style={styles.dividerText}>or explore instantly</Text>
@@ -155,7 +247,7 @@ export default function LoginScreen() {
             )}
           </Pressable>
           <Text style={styles.demoHint}>Instantly access the app with sample data</Text>
-        </View>
+        </View> */}
 
         {/* Sign Up Link */}
         <View style={styles.signupRow}>
@@ -212,6 +304,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#FEF2F2", borderRadius: 10, padding: 12, borderWidth: 1, borderColor: "#FECACA",
   },
   errorText: { color: Colors.danger, fontSize: 13, fontFamily: "Urbanist_500Medium", flex: 1 },
+  successBox: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: "#ECFDF5", borderRadius: 10, padding: 12, borderWidth: 1, borderColor: "#A7F3D0",
+  },
+  successText: { color: Colors.success, fontSize: 13, fontFamily: "Urbanist_500Medium", flex: 1 },
   fieldLabel: {
     fontSize: 11,
     fontFamily: "Urbanist_700Bold",

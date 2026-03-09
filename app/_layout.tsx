@@ -24,6 +24,7 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="listing/[id]" options={{ headerShown: false, animation: "slide_from_right" }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

@@ -6,7 +6,7 @@ import React, {
   useMemo,
   ReactNode,
 } from "react";
-import { getToken, getUser, deleteToken, storeToken, storeUser } from "@/lib/auth";
+import { getToken, getUser, deleteToken, storeToken, storeUser, storeRefreshToken, getRefreshToken } from "@/lib/auth";
 import { router } from "expo-router";
 
 interface User {
@@ -19,9 +19,10 @@ interface User {
 interface AuthContextValue {
   user: User | null;
   token: string | null;
+  refreshToken: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (token: string, user: User) => Promise<void>;
+  login: (token: string, user: User, refreshToken?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -30,15 +31,19 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [rToken, setRToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        const [storedToken, storedUser] = await Promise.all([getToken(), getUser()]);
+        const [storedToken, storedUser, storedRefresh] = await Promise.all([
+          getToken(), getUser(), getRefreshToken(),
+        ]);
         if (storedToken && storedUser) {
           setToken(storedToken);
           setUser(storedUser as User);
+          if (storedRefresh) setRToken(storedRefresh);
         }
       } catch {
         // ignore
@@ -48,15 +53,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  const login = async (newToken: string, newUser: User) => {
-    await Promise.all([storeToken(newToken), storeUser(newUser)]);
+  const login = async (newToken: string, newUser: User, newRefreshToken?: string) => {
+    const promises: Promise<void>[] = [storeToken(newToken), storeUser(newUser)];
+    if (newRefreshToken) promises.push(storeRefreshToken(newRefreshToken));
+    await Promise.all(promises);
     setToken(newToken);
     setUser(newUser);
+    if (newRefreshToken) setRToken(newRefreshToken);
   };
 
   const logout = async () => {
     await deleteToken();
     setToken(null);
+    setRToken(null);
     setUser(null);
     router.replace("/(auth)/login");
   };
@@ -65,12 +74,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       token,
+      refreshToken: rToken,
       isLoading,
       isAuthenticated: !!token && !!user,
       login,
       logout,
     }),
-    [user, token, isLoading],
+    [user, token, rToken, isLoading],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

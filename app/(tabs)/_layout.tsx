@@ -1,9 +1,11 @@
 import { isLiquidGlassAvailable } from "expo-glass-effect";
-import { Tabs } from "expo-router";
+import { Tabs, router } from "expo-router";
 import { NativeTabs, Icon, Label } from "expo-router/unstable-native-tabs";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
+import { useAuth } from "@/contexts/AuthContext";
+import { useEffect } from "react";
 
 function NativeTabLayout() {
   return (
@@ -71,6 +73,33 @@ function ClassicTabLayout() {
 }
 
 export default function TabLayout() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.replace("/(auth)/login");
+    }
+  }, [isAuthenticated, isLoading]);
+
+  // Show loading spinner while checking auth
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
+  // Don't render tabs if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
+
   if (isLiquidGlassAvailable()) return <NativeTabLayout />;
   return <ClassicTabLayout />;
 }
+

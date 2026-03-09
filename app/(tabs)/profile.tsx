@@ -1,10 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, ScrollView, Pressable, StyleSheet,
   TextInput, Modal, ActivityIndicator, Alert,
   KeyboardAvoidingView, Platform,
 } from "react-native";
-import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
@@ -13,7 +12,7 @@ import { Colors } from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { formatCurrency, formatDate } from "@/utils/formatters";
-import { apiRequest } from "@/lib/auth";
+import { apiRequestDirect } from "@/lib/auth";
 
 const CATEGORIES = ["Sedan", "SUV", "Hatchback", "Luxury", "Sports", "Electric"];
 
@@ -29,9 +28,12 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
     if (!title.trim() || !basePrice.trim()) { Alert.alert("Missing Info", "Please enter vehicle title and price."); return; }
     setLoading(true);
     try {
-      const res = await apiRequest("POST", "/api/user/sell-request", { title: title.trim(), description: description.trim(), category, listingType, basePrice: parseInt(basePrice, 10) });
-      const data = await res.json();
-      if (data.success) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); Alert.alert("Submitted!", data.data.message); setTitle(""); setDescription(""); setBasePrice(""); onClose(); }
+      const res = await apiRequestDirect("POST", "http://192.168.1.102:8002/user/sell-request", { title: title.trim(), description: description.trim(), category, listingType, basePrice: parseInt(basePrice, 10) }, true);
+      const rawText = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
+      if (res.ok) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); Alert.alert("Submitted!", data?.message || "Vehicle submitted for review."); setTitle(""); setDescription(""); setBasePrice(""); onClose(); }
+      else { Alert.alert("Error", data?.message || "Failed to submit."); }
     } catch { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); }
     finally { setLoading(false); }
   };
@@ -86,15 +88,73 @@ export default function ProfileScreen() {
   const { user, logout } = useAuth();
   const [sellVisible, setSellVisible] = useState(false);
   const [subVisible, setSubVisible] = useState(false);
+  const [editVisible, setEditVisible] = useState(false);
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
-  const { data } = useQuery<{ success: boolean; data: any }>({ queryKey: ["/api/user/profile"] });
-  const { data: subData } = useQuery<{ success: boolean; data: any }>({ queryKey: ["/api/subscriptions/me"] });
+  // Profile data from API
+  const [profile, setProfile] = useState<any>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState("");
 
-  const profile = data?.data;
-  const sub = subData?.data;
+  // Edit form state
+  const [editName, setEditName] = useState("");
+  const [editGender, setEditGender] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const initials = (user?.fullName ?? profile?.fullName ?? "U").split(" ").map((n: string) => n[0]).join("").toUpperCase().substring(0, 2);
+  const fetchProfile = useCallback(async () => {
+    try {
+      setProfileError("");
+      const res = await apiRequestDirect("GET", "http://192.168.1.102:8002/user/users-profile", undefined, true);
+      const rawText = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(rawText); } catch { data = {}; }
+      if (res.ok) {
+        const profileData = data?.data || data?.user || data;
+        setProfile(profileData);
+      } else {
+        // setProfileError(`API ${res.status}: ${data?.message || rawText}`);
+      }
+    } catch (err: any) {
+      setProfileError(`Error: ${err?.message || "Failed to fetch profile"}`);
+    }
+    finally { setProfileLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchProfile(); }, [fetchProfile]);
+
+  const openEditProfile = () => {
+    setEditName(profile?.full_name || profile?.fullName || user?.fullName || "");
+    setEditGender(profile?.gender || "");
+    setEditVisible(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editName.trim()) return;
+    setSaving(true);
+    try {
+      const res = await apiRequestDirect("PUT", "http://192.168.1.102:8002/user/users-profile", {
+        full_name: editName.trim(),
+        gender: editGender,
+      }, true);
+      const rawText = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(rawText); } catch { data = {}; }
+      if (res.ok) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setEditVisible(false);
+        fetchProfile();
+      } else {
+        Alert.alert("Error", data?.message || "Failed to update profile.");
+      }
+    } catch { Alert.alert("Error", "Network error. Please try again."); }
+    finally { setSaving(false); }
+  };
+
+  const displayName = profile?.full_name || profile?.fullName || user?.fullName || "User";
+  const displayEmail = profile?.email || user?.email || "";
+  const displayPhone = profile?.phone || user?.phone || "";
+
+  const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().substring(0, 2);
 
   const menu = [
     { icon: "car-sport-outline", label: "My Vehicles" },
@@ -110,15 +170,31 @@ export default function ProfileScreen() {
         <Pressable onPress={() => logout()} style={styles.logoutIcon}><Ionicons name="log-out-outline" size={22} color={Colors.textSecondary} /></Pressable>
       </View>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-        {/* Profile Card */}
-        <View style={styles.profileCard}>
+        {/* Profile Card — tap to edit */}
+        <Pressable onPress={openEditProfile} style={styles.profileCard}>
           <LinearGradient colors={[Colors.hero, Colors.heroLight]} style={styles.avatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
             <Text style={styles.avatarText}>{initials}</Text>
           </LinearGradient>
-          <Text style={styles.profileName}>{user?.fullName ?? profile?.fullName ?? "User"}</Text>
-          <Text style={styles.profileEmail}>{user?.email ?? profile?.email}</Text>
-          <Text style={styles.profilePhone}>{user?.phone ?? profile?.phone}</Text>
-        </View>
+          {profileLoading ? (
+            <ActivityIndicator color={Colors.primary} style={{ marginTop: 8 }} />
+          ) : (
+            <>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Text style={styles.profileName}>{displayName}</Text>
+                <Ionicons name="pencil" size={14} color={Colors.textMuted} />
+              </View>
+              <Text style={styles.profileEmail}>{displayEmail}</Text>
+              <Text style={styles.profilePhone}>{displayPhone}</Text>
+            </>
+          )}
+        </Pressable>
+
+        {/* Debug: show profile fetch errors */}
+        {profileError ? (
+          <View style={{ marginHorizontal: 16, marginBottom: 12, backgroundColor: "#FEF2F2", borderRadius: 10, padding: 12, borderWidth: 1, borderColor: "#FECACA" }}>
+            <Text style={{ fontSize: 12, fontFamily: "Urbanist_500Medium", color: Colors.danger }}>{profileError}</Text>
+          </View>
+        ) : null}
 
         {/* Subscription */}
         <Pressable onPress={() => { setSubVisible(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }} style={styles.subCard}>
@@ -127,13 +203,13 @@ export default function ProfileScreen() {
             <View>
               <View style={styles.subBadgeRow}>
                 <View style={styles.subActiveBadge}><Text style={styles.subActiveBadgeText}>ACTIVE</Text></View>
-                <Text style={styles.subPlan}>{sub?.plan ?? "STANDARD"}</Text>
+                <Text style={styles.subPlan}>{profile?.plan ?? "STANDARD"}</Text>
               </View>
               <Text style={styles.subTitle}>Subscription</Text>
-              {sub?.expiresAt && <Text style={styles.subExpiry}>Expires {formatDate(sub.expiresAt)}</Text>}
+              {profile?.expiresAt && <Text style={styles.subExpiry}>Expires {formatDate(profile.expiresAt)}</Text>}
             </View>
             <View style={styles.subCountWrap}>
-              <Text style={styles.subCount}>{sub?.remainingListings ?? 0}</Text>
+              <Text style={styles.subCount}>{profile?.remainingListings ?? 0}</Text>
               <Text style={styles.subCountLabel}>listings{"\n"}left</Text>
             </View>
           </View>
@@ -167,6 +243,86 @@ export default function ProfileScreen() {
       </ScrollView>
       <SellSheet visible={sellVisible} onClose={() => setSellVisible(false)} />
       <SubscriptionModal visible={subVisible} onClose={() => setSubVisible(false)} onSuccess={() => setSubVisible(false)} mode="renew" />
+
+      {/* Edit Profile Modal */}
+      <Modal visible={editVisible} animationType="slide" transparent onRequestClose={() => setEditVisible(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <View style={editS.overlay}>
+            <View style={editS.sheet}>
+              <View style={editS.grabber} />
+              <View style={editS.header}>
+                <Text style={editS.title}>Edit Profile</Text>
+                <Pressable onPress={() => setEditVisible(false)} style={editS.closeBtn}><Ionicons name="close" size={20} color={Colors.textSecondary} /></Pressable>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={editS.form}>
+                {/* Full Name — editable */}
+                <View style={editS.group}>
+                  <Text style={editS.label}>FULL NAME</Text>
+                  <TextInput
+                    style={editS.input}
+                    value={editName}
+                    onChangeText={setEditName}
+                    placeholder="Enter your full name"
+                    placeholderTextColor={Colors.textMuted}
+                  />
+                </View>
+
+                {/* Phone — disabled */}
+                <View style={editS.group}>
+                  <Text style={editS.label}>PHONE NUMBER</Text>
+                  <TextInput
+                    style={[editS.input, editS.disabledInput]}
+                    value={displayPhone}
+                    editable={false}
+                  />
+                </View>
+
+                {/* Email — disabled */}
+                <View style={editS.group}>
+                  <Text style={editS.label}>EMAIL ADDRESS</Text>
+                  <TextInput
+                    style={[editS.input, editS.disabledInput]}
+                    value={displayEmail}
+                    editable={false}
+                  />
+                </View>
+
+                {/* Gender — radio buttons */}
+                <View style={editS.group}>
+                  <Text style={editS.label}>GENDER</Text>
+                  <View style={editS.radioRow}>
+                    {["Male", "Female", "Other"].map((g) => (
+                      <Pressable
+                        key={g}
+                        onPress={() => { setEditGender(g); Haptics.selectionAsync(); }}
+                        style={[editS.radioBtn, editGender === g && editS.radioBtnActive]}
+                      >
+                        <View style={[editS.radioCircle, editGender === g && editS.radioCircleActive]}>
+                          {editGender === g && <View style={editS.radioDot} />}
+                        </View>
+                        <Text style={[editS.radioText, editGender === g && editS.radioTextActive]}>{g}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Save Button */}
+                <Pressable
+                  style={({ pressed }) => [editS.saveBtn, { opacity: pressed ? 0.85 : 1 }]}
+                  onPress={handleSaveProfile}
+                  disabled={saving}
+                >
+                  <LinearGradient colors={[Colors.heroLight, Colors.hero]} style={editS.saveGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                    {saving ? <ActivityIndicator color="#fff" /> : (
+                      <><Ionicons name="checkmark-circle" size={18} color="#fff" /><Text style={editS.saveText}>Save Changes</Text></>
+                    )}
+                  </LinearGradient>
+                </Pressable>
+              </ScrollView>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -233,4 +389,29 @@ const sellS = StyleSheet.create({
   submitBtn: { borderRadius: 14, overflow: "hidden" },
   submitGrad: { height: 54, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   submitText: { fontSize: 16, fontFamily: "Urbanist_700Bold", color: "#fff" },
+});
+
+const editS = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  sheet: { backgroundColor: Colors.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: "90%", borderWidth: 1, borderColor: Colors.cardBorder },
+  grabber: { width: 36, height: 4, backgroundColor: Colors.cardBorder, borderRadius: 2, alignSelf: "center", marginTop: 12, marginBottom: 4 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 24, paddingVertical: 16 },
+  title: { fontSize: 20, fontFamily: "Urbanist_700Bold", color: Colors.text },
+  closeBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center", backgroundColor: Colors.surface, borderRadius: 10 },
+  form: { paddingHorizontal: 24, paddingBottom: 40, gap: 20 },
+  group: { gap: 8 },
+  label: { fontSize: 11, fontFamily: "Urbanist_700Bold", color: Colors.textSecondary, letterSpacing: 1 },
+  input: { backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, fontFamily: "Urbanist_500Medium", color: Colors.text },
+  disabledInput: { backgroundColor: "#F0F0F0", color: Colors.textMuted, opacity: 0.7 },
+  radioRow: { flexDirection: "row", gap: 12 },
+  radioBtn: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: Colors.surface, borderRadius: 12, borderWidth: 1, borderColor: Colors.cardBorder, paddingVertical: 14, paddingHorizontal: 14 },
+  radioBtnActive: { backgroundColor: Colors.primaryLight, borderColor: Colors.primary },
+  radioCircle: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: Colors.textMuted, alignItems: "center", justifyContent: "center" },
+  radioCircleActive: { borderColor: Colors.primary },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.primary },
+  radioText: { fontSize: 14, fontFamily: "Urbanist_500Medium", color: Colors.textSecondary },
+  radioTextActive: { color: Colors.primary, fontFamily: "Urbanist_600SemiBold" },
+  saveBtn: { borderRadius: 14, overflow: "hidden", marginTop: 4 },
+  saveGrad: { height: 54, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  saveText: { fontSize: 16, fontFamily: "Urbanist_700Bold", color: "#fff" },
 });

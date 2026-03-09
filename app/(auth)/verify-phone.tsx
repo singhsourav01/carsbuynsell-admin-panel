@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
-import { apiRequest } from "@/lib/auth";
+import { apiRequestDirect } from "@/lib/auth";
 
 const OTP_LENGTH = 6;
 
@@ -28,7 +28,7 @@ function StepItem({ n, text, state }: { n: string; text: string; state: "done" |
 
 export default function VerifyPhoneScreen() {
   const insets = useSafeAreaInsets();
-  const { userId, phone, email } = useLocalSearchParams<{ userId: string; phone: string; email: string }>();
+  const { phone, email } = useLocalSearchParams<{ phone: string; email: string }>();
   const [otp, setOtp] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
@@ -56,26 +56,36 @@ export default function VerifyPhoneScreen() {
     if (otpValue.length < OTP_LENGTH) { setError("Please enter all 6 digits"); return; }
     setError(""); setLoading(true);
     try {
-      const res = await apiRequest("POST", "/api/auth/verify-phone", { userId, otp: otpValue }, false);
-      const data = await res.json();
-      if (data.success) {
+      const res = await apiRequestDirect("POST", "http://192.168.1.102:8000/auth/verify-phone", { otp: otpValue, phone });
+      const rawText = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
+      if (res.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.replace({ pathname: "/(auth)/verify-email", params: { userId, email } });
+        router.replace({ pathname: "/(auth)/verify-email", params: { phone, email } });
       } else {
-        setError(data.message || "Invalid OTP");
+        setError(data?.message || data?.error || "Invalid OTP");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
-    } catch { setError("Verification failed. Please try again."); }
+    } catch (err: any) { setError(err?.message || "Verification failed. Please try again."); }
     finally { setLoading(false); }
   };
 
   const handleResend = async () => {
     setResending(true); setError(""); setSuccess("");
     try {
-      const res = await apiRequest("POST", "/api/auth/resend-otp", { userId, type: "phone" }, false);
-      const data = await res.json();
-      if (data.success) { setSuccess(data.data.message); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }
-    } catch {} finally { setResending(false); }
+      const res = await apiRequestDirect("POST", "http://192.168.1.102:8000/auth/send-phone-otp", { phone });
+      const rawText = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
+      if (res.ok) {
+        setSuccess(data?.message || "OTP resent successfully");
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } else {
+        setError(data?.message || data?.error || "Failed to resend OTP");
+      }
+    } catch { setError("Failed to resend OTP. Please try again."); }
+    finally { setResending(false); }
   };
 
   return (

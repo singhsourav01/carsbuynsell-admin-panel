@@ -4,6 +4,7 @@ import { getApiUrl } from "./query-client";
 import { fetch } from "expo/fetch";
 
 const TOKEN_KEY = "autobid_jwt_token";
+const REFRESH_TOKEN_KEY = "autobid_refresh_token";
 const USER_KEY = "autobid_user";
 
 export async function storeToken(token: string): Promise<void> {
@@ -24,11 +25,28 @@ export async function getToken(): Promise<string | null> {
 export async function deleteToken(): Promise<void> {
   if (Platform.OS === "web") {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
   } else {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
     await SecureStore.deleteItemAsync(USER_KEY);
   }
+}
+
+export async function storeRefreshToken(token: string): Promise<void> {
+  if (Platform.OS === "web") {
+    localStorage.setItem(REFRESH_TOKEN_KEY, token);
+  } else {
+    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, token);
+  }
+}
+
+export async function getRefreshToken(): Promise<string | null> {
+  if (Platform.OS === "web") {
+    return localStorage.getItem(REFRESH_TOKEN_KEY);
+  }
+  return SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
 }
 
 export async function storeUser(user: object): Promise<void> {
@@ -73,6 +91,30 @@ export async function apiRequest(
   }
 
   const res = await fetch(url.toString(), {
+    method,
+    headers,
+    body: data ? JSON.stringify(data) : undefined,
+  });
+
+  return res;
+}
+
+export async function apiRequestDirect(
+  method: string,
+  fullUrl: string,
+  data?: unknown,
+  requiresAuth = false,
+): Promise<Response> {
+  const headers: Record<string, string> = {};
+  if (data) headers["Content-Type"] = "application/json";
+
+  if (requiresAuth) {
+    const token = await getToken();
+    console.log("=== AUTH TOKEN FOR REQUEST ===", fullUrl, token ? `Bearer ${token.substring(0, 20)}...` : "NO TOKEN FOUND");
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(fullUrl, {
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,

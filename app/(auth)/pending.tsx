@@ -46,7 +46,7 @@ export default function PendingScreen() {
         <Text style={styles.title}>Awaiting Admin Approval</Text>
         <Text style={styles.message}>
           Your account has been submitted successfully. Our team will review and approve your request within{" "}
-          <Text style={styles.highlight}>24–48 hours</Text>.
+          <Text style={styles.highlight}>24 hours</Text>.
         </Text>
 
         {/* Checklist */}

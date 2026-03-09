@@ -1,9 +1,9 @@
-import React, { useState, useCallback, useRef, memo } from "react";
+import React, { useState, useCallback, useEffect, useRef, memo } from "react";
 import {
   View, Text, FlatList, Pressable, StyleSheet, Modal,
-  TextInput, ActivityIndicator, Alert,
+  TextInput, ActivityIndicator, Alert, RefreshControl,
 } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -13,20 +13,17 @@ import { Colors } from "@/constants/colors";
 import { CountdownTimer } from "@/components/CountdownTimer";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { formatCurrency } from "@/utils/formatters";
-import { apiRequest } from "@/lib/auth";
+import { apiRequestDirect } from "@/lib/auth";
 
-interface Auction {
-  id: string; title: string; currentBid: number; minIncrement: number;
-  bidCount: number; auctionEnd: string; image: string;
-  category: string; year: number; km: number; location: string;
-}
-
-function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: Auction | null; visible: boolean; onClose: () => void; onBidSuccess: (bid: number) => void }) {
+function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: any | null; visible: boolean; onClose: () => void; onBidSuccess: (bid: number) => void }) {
   const [bidAmount, setBidAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const lastBidTime = useRef(0);
   if (!auction) return null;
-  const minBid = auction.currentBid + auction.minIncrement;
+
+  const currentBid = Number(auction.lst_current_bid || auction.lst_price || 0);
+  const minIncrement = Number(auction.lst_min_increment || 1);
+  const minBid = currentBid + minIncrement;
 
   const handleBid = async () => {
     const now = Date.now();
@@ -36,11 +33,15 @@ function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: Auctio
     lastBidTime.current = now;
     setLoading(true);
     try {
-      const res = await apiRequest("POST", `/api/user/live/${auction.id}/bid`, { bidAmount: amount });
-      const data = await res.json();
-      if (data.success) {
+      const res = await apiRequestDirect("POST", `http://192.168.1.102:8002/user/listings/${auction.lst_id}/bid`, { bidAmount: amount }, true);
+      const rawText = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(rawText); } catch { data = {}; }
+      if (res.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         onBidSuccess(amount); onClose(); setBidAmount("");
+      } else {
+        Alert.alert("Error", data?.message || "Failed to place bid.");
       }
     } catch { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); }
     finally { setLoading(false); }
@@ -56,17 +57,17 @@ function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: Auctio
             <Pressable onPress={onClose} style={bidS.closeBtn}><Ionicons name="close" size={20} color={Colors.textSecondary} /></Pressable>
           </View>
           <View style={bidS.auctionInfo}>
-            <Text style={bidS.auctionTitle} numberOfLines={1}>{auction.title}</Text>
+            <Text style={bidS.auctionTitle} numberOfLines={1}>{auction.lst_title}</Text>
             <View style={bidS.bidRow}>
-              <View><Text style={bidS.bidLabel}>Current Bid</Text><Text style={bidS.bidValue}>{formatCurrency(auction.currentBid)}</Text></View>
-              <CountdownTimer endDate={auction.auctionEnd} compact />
+              <View><Text style={bidS.bidLabel}>Current Bid</Text><Text style={bidS.bidValue}>{formatCurrency(currentBid)}</Text></View>
+              {auction.lst_auction_end && <CountdownTimer endDate={auction.lst_auction_end} compact />}
             </View>
           </View>
           <View style={bidS.minInfo}><Ionicons name="information-circle-outline" size={13} color={Colors.info} /><Text style={bidS.minText}>Min: {formatCurrency(minBid)}</Text></View>
           <View style={bidS.quickRow}>
             {[1, 2, 3].map(m => (
-              <Pressable key={m} onPress={() => { setBidAmount(String(auction.currentBid + auction.minIncrement * m)); Haptics.selectionAsync(); }} style={bidS.quickBtn}>
-                <Text style={bidS.quickText}>+{formatCurrency(auction.minIncrement * m)}</Text>
+              <Pressable key={m} onPress={() => { setBidAmount(String(currentBid + minIncrement * m)); Haptics.selectionAsync(); }} style={bidS.quickBtn}>
+                <Text style={bidS.quickText}>+{formatCurrency(minIncrement * m)}</Text>
               </Pressable>
             ))}
           </View>
@@ -85,28 +86,32 @@ function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: Auctio
   );
 }
 
-const AuctionCard = memo(function AuctionCard({ item, onPress }: { item: Auction; onPress: () => void }) {
+const AuctionCard = memo(function AuctionCard({ item, onPress }: { item: any; onPress: () => void }) {
+  const imageUri = item.images?.[0]?.url || item.images?.[0]?.file_url;
+  const currentBid = Number(item.lst_current_bid || item.lst_price || 0);
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.card, { opacity: pressed ? 0.95 : 1 }]}>
       <View style={styles.imgWrap}>
-        <Image source={{ uri: item.image }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
+        {imageUri ? (
+          <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
+        ) : (
+          <LinearGradient colors={[Colors.hero, Colors.heroDark]} style={StyleSheet.absoluteFill} />
+        )}
         <LinearGradient colors={["transparent", "rgba(0,0,0,0.6)"]} style={styles.imgGrad} />
         <View style={styles.liveBadge}><View style={styles.liveDot} /><Text style={styles.liveBadgeText}>LIVE</Text></View>
-        <View style={styles.timerWrap}><CountdownTimer endDate={item.auctionEnd} compact /></View>
+        {item.lst_auction_end && <View style={styles.timerWrap}><CountdownTimer endDate={item.lst_auction_end} compact /></View>}
       </View>
       <View style={styles.cardBody}>
         <View style={styles.titleRow}>
-          <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-          <View style={styles.catTag}><Text style={styles.catTagText}>{item.category}</Text></View>
+          <Text style={styles.cardTitle} numberOfLines={1}>{item.lst_title}</Text>
+          {item.category?.cat_name && <View style={styles.catTag}><Text style={styles.catTagText}>{item.category.cat_name}</Text></View>}
         </View>
         <View style={styles.metaRow}>
-          <View style={styles.metaItem}><Ionicons name="calendar-outline" size={12} color={Colors.textMuted} /><Text style={styles.metaText}>{item.year}</Text></View>
-          <View style={styles.metaItem}><Ionicons name="speedometer-outline" size={12} color={Colors.textMuted} /><Text style={styles.metaText}>{(item.km/1000).toFixed(0)}k km</Text></View>
-          <View style={styles.metaItem}><Ionicons name="location-outline" size={12} color={Colors.textMuted} /><Text style={styles.metaText}>{item.location}</Text></View>
+          {item.seller?.user_full_name && <View style={styles.metaItem}><Ionicons name="person-outline" size={12} color={Colors.textMuted} /><Text style={styles.metaText}>{item.seller.user_full_name}</Text></View>}
+          {item.lst_bid_count > 0 && <View style={styles.metaItem}><Ionicons name="people-outline" size={12} color={Colors.textMuted} /><Text style={styles.metaText}>{item.lst_bid_count} bids</Text></View>}
         </View>
         <View style={styles.bottomRow}>
-          <View><Text style={styles.bidLabel}>Current Bid</Text><Text style={styles.bidValue}>{formatCurrency(item.currentBid)}</Text></View>
-          <View style={styles.bidsWrap}><Ionicons name="people-outline" size={14} color={Colors.textSecondary} /><Text style={styles.bidsText}>{item.bidCount} bids</Text></View>
+          <View><Text style={styles.bidLabel}>Current Bid</Text><Text style={styles.bidValue}>{formatCurrency(currentBid)}</Text></View>
           <Pressable onPress={onPress} style={styles.bidNowBtn}><LinearGradient colors={[Colors.heroLight, Colors.hero]} style={styles.bidNowGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}><Ionicons name="flash" size={13} color="#fff" /><Text style={styles.bidNowText}>Bid Now</Text></LinearGradient></Pressable>
         </View>
       </View>
@@ -116,36 +121,72 @@ const AuctionCard = memo(function AuctionCard({ item, onPress }: { item: Auction
 
 export default function LiveScreen() {
   const insets = useSafeAreaInsets();
-  const [selectedAuction, setSelectedAuction] = useState<Auction | null>(null);
+  const [selectedAuction, setSelectedAuction] = useState<any>(null);
   const [bidVisible, setBidVisible] = useState(false);
   const [subVisible, setSubVisible] = useState(false);
   const [localBids, setLocalBids] = useState<Record<string, number>>({});
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
-  const { data, isLoading, refetch, isRefetching } = useQuery<{ success: boolean; data: { auctions: Auction[] } }>({ queryKey: ["/api/user/live"], refetchInterval: 30000 });
-  const auctions = (data?.data?.auctions ?? []).map(a => ({ ...a, currentBid: localBids[a.id] ?? a.currentBid }));
+  // API data
+  const [auctions, setAuctions] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const handlePress = useCallback((a: Auction) => { setSelectedAuction(a); setBidVisible(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }, []);
-  const keyExtractor = useCallback((item: Auction) => item.id, []);
-  const renderItem = useCallback(({ item }: { item: Auction }) => <AuctionCard item={item} onPress={() => handlePress(item)} />, [handlePress]);
+  const fetchAuctions = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setIsRefreshing(true);
+    try {
+      const res = await apiRequestDirect("GET", "http://192.168.1.102:8002/user/listings?type=AUCTION");
+      const rawText = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(rawText); } catch { data = {}; }
+      if (res.ok) {
+        const items = data?.data?.data || data?.data?.listings || (Array.isArray(data?.data) ? data.data : []);
+        setAuctions(items);
+      }
+    } catch { /* ignore */ }
+    finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchAuctions(); }, [fetchAuctions]);
+
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => fetchAuctions(), 30000);
+    return () => clearInterval(interval);
+  }, [fetchAuctions]);
+
+  const handleRefresh = useCallback(() => { fetchAuctions(true); }, [fetchAuctions]);
+
+  // Apply local bid overrides
+  const displayAuctions = auctions.map(a => ({
+    ...a,
+    lst_current_bid: localBids[a.lst_id] ?? a.lst_current_bid,
+  }));
+
+  const handlePress = useCallback((a: any) => { router.push(`/listing/${a.lst_id}` as any); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }, []);
+  const keyExtractor = useCallback((item: any) => item.lst_id, []);
+  const renderItem = useCallback(({ item }: { item: any }) => <AuctionCard item={item} onPress={() => handlePress(item)} />, [handlePress]);
 
   return (
     <View style={[styles.container, { paddingTop: topPad }]}>
       <View style={styles.header}>
         <View>
           <Text style={styles.pageTitle}>Live Auctions</Text>
-          <Text style={styles.pageSub}>{auctions.length} auctions live now</Text>
+          <Text style={styles.pageSub}>{displayAuctions.length} auction{displayAuctions.length !== 1 ? "s" : ""} live now</Text>
         </View>
         <View style={styles.liveIndicator}><View style={styles.livePulse} /><Text style={styles.liveText}>LIVE</Text></View>
       </View>
       {isLoading ? <View style={styles.loadWrap}><ActivityIndicator size="large" color={Colors.primary} /></View> : (
-        <FlatList data={auctions} renderItem={renderItem} keyExtractor={keyExtractor}
+        <FlatList data={displayAuctions} renderItem={renderItem} keyExtractor={keyExtractor}
           contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}
-          onRefresh={refetch} refreshing={isRefetching}
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={Colors.primary} />}
           ListEmptyComponent={<View style={styles.empty}><Ionicons name="flash-outline" size={48} color={Colors.textMuted} /><Text style={styles.emptyTitle}>No Live Auctions</Text><Text style={styles.emptySub}>Check back soon</Text></View>}
         />
       )}
-      <BidSheet auction={selectedAuction} visible={bidVisible} onClose={() => setBidVisible(false)} onBidSuccess={(bid) => { if (selectedAuction) setLocalBids(p => ({ ...p, [selectedAuction.id]: bid })); }} />
+      <BidSheet auction={selectedAuction} visible={bidVisible} onClose={() => setBidVisible(false)} onBidSuccess={(bid) => { if (selectedAuction) setLocalBids(p => ({ ...p, [selectedAuction.lst_id]: bid })); }} />
       <SubscriptionModal visible={subVisible} onClose={() => setSubVisible(false)} onSuccess={() => { setSubVisible(false); if (selectedAuction) setBidVisible(true); }} />
     </View>
   );
@@ -179,8 +220,6 @@ const styles = StyleSheet.create({
   bottomRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   bidLabel: { fontSize: 11, fontFamily: "Urbanist_400Regular", color: Colors.textMuted },
   bidValue: { fontSize: 18, fontFamily: "Urbanist_700Bold", color: Colors.primary },
-  bidsWrap: { flexDirection: "row", alignItems: "center", gap: 4 },
-  bidsText: { fontSize: 13, fontFamily: "Urbanist_500Medium", color: Colors.textSecondary },
   bidNowBtn: { borderRadius: 10, overflow: "hidden" },
   bidNowGrad: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 14, paddingVertical: 10 },
   bidNowText: { fontSize: 13, fontFamily: "Urbanist_700Bold", color: "#fff" },
