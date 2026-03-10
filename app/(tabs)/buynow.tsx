@@ -12,11 +12,12 @@ import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { formatCurrency } from "@/utils/formatters";
 import { apiRequestDirect } from "@/lib/auth";
+import { SubscriptionModal } from "@/components/SubscriptionModal";
 
-const VCard = memo(function VCard({ item, onPress }: { item: any; onPress: () => void }) {
+const VCard = memo(function VCard({ item, onBuyNow }: { item: any; onBuyNow: () => void }) {
   const imageUri = item.images?.[0]?.url || item.images?.[0]?.file_url;
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, { opacity: pressed ? 0.95 : 1 }]}>
+    <Pressable onPress={() => { router.push(`/listing/${item.lst_id}` as any); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }} style={({ pressed }) => [styles.card, { opacity: pressed ? 0.95 : 1 }]}>
       <View style={styles.imgWrap}>
         {imageUri ? (
           <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
@@ -30,6 +31,15 @@ const VCard = memo(function VCard({ item, onPress }: { item: any; onPress: () =>
         <Text style={styles.cardMeta} numberOfLines={1}>{item.category?.cat_name || ""} · {item.seller?.user_full_name || ""}</Text>
         <View style={styles.priceRow}>
           <Text style={styles.price}>{formatCurrency(item.lst_price)}</Text>
+          <Pressable
+            onPress={(e) => { e.stopPropagation?.(); onBuyNow(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }}
+            style={styles.buyBtn}
+          >
+            <LinearGradient colors={[Colors.heroLight, Colors.hero]} style={styles.buyBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+              <Ionicons name="pricetag" size={12} color="#fff" />
+              <Text style={styles.buyBtnText}>Buy Now</Text>
+            </LinearGradient>
+          </Pressable>
         </View>
       </View>
     </Pressable>
@@ -40,16 +50,23 @@ export default function BuyNowScreen() {
   const insets = useSafeAreaInsets();
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
-  // API data
   const [listings, setListings] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [subVisible, setSubVisible] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+
+  const handleBuyNowPress = useCallback((item: any) => {
+    setSelectedItem(item);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSubVisible(true);
+  }, []);
 
   const fetchListings = useCallback(async (isRefresh = false) => {
     if (isRefresh) setIsRefreshing(true);
     try {
-      const res = await apiRequestDirect("GET", "http://192.168.1.102:8002/user/listings?type=BUY_NOW");
+      const res = await apiRequestDirect("GET", "http://169.254.61.129 :8002/user/listings?type=BUY_NOW");
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
@@ -69,15 +86,15 @@ export default function BuyNowScreen() {
 
   const handleRefresh = useCallback(() => { fetchListings(true); }, [fetchListings]);
 
-  // Filter by search
   const query = searchQuery.trim().toLowerCase();
   const filtered = query
     ? listings.filter((item) => item.lst_title?.toLowerCase().includes(query))
     : listings;
 
-  const handlePress = useCallback((v: any) => { router.push(`/listing/${v.lst_id}` as any); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }, []);
   const keyExtractor = useCallback((item: any) => item.lst_id, []);
-  const renderItem = useCallback(({ item }: { item: any }) => <VCard item={item} onPress={() => handlePress(item)} />, [handlePress]);
+  const renderItem = useCallback(({ item }: { item: any }) => (
+    <VCard item={item} onBuyNow={() => handleBuyNowPress(item)} />
+  ), [handleBuyNowPress]);
 
   return (
     <View style={[styles.container, { paddingTop: topPad }]}>
@@ -111,6 +128,11 @@ export default function BuyNowScreen() {
           ListEmptyComponent={<View style={styles.empty}><Ionicons name="car-outline" size={48} color={Colors.textMuted} /><Text style={styles.emptyTitle}>No Vehicles</Text><Text style={styles.emptySub}>{query ? "No results for your search" : "Check back soon for new listings"}</Text></View>}
         />
       )}
+      <SubscriptionModal
+        visible={subVisible}
+        onClose={() => setSubVisible(false)}
+        onSuccess={() => { setSubVisible(false); if (selectedItem) router.push(`/listing/${selectedItem.lst_id}` as any); }}
+      />
     </View>
   );
 }
@@ -137,6 +159,9 @@ const styles = StyleSheet.create({
   cardMeta: { fontSize: 13, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary },
   priceRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   price: { fontSize: 20, fontFamily: "Urbanist_700Bold", color: Colors.primary },
+  buyBtn: { borderRadius: 10, overflow: "hidden" },
+  buyBtnGrad: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, paddingVertical: 9 },
+  buyBtnText: { fontSize: 12, fontFamily: "Urbanist_700Bold", color: "#fff" },
   empty: { alignItems: "center", paddingTop: 80, gap: 12 },
   emptyTitle: { fontSize: 20, fontFamily: "Urbanist_700Bold", color: Colors.text },
   emptySub: { fontSize: 14, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary },

@@ -63,7 +63,7 @@ export default function LoginScreen() {
       };
       console.log("=== DEVICE REGISTRATION PAYLOAD ===", JSON.stringify(payload, null, 2));
 
-      const res = await apiRequestDirect("POST", "http://192.168.1.102:8002/user/user-device", payload);
+      const res = await apiRequestDirect("POST", "http://169.254.61.129 :8002/user/user-device", payload);
       const resText = await res.text();
       console.log("=== DEVICE REGISTRATION RESPONSE ===", res.status, resText);
     } catch (err: any) {
@@ -89,7 +89,7 @@ export default function LoginScreen() {
       const isEmail = cleaned.includes("@");
       const userDetail = isEmail ? cleaned : `${cleaned.replace(/\D/g, "")}`;
 
-      const res = await apiRequestDirect("POST", "http://192.168.1.102:8000/auth/signin", {
+      const res = await apiRequestDirect("POST", "http://169.254.61.129 :8000/auth/signin", {
         user_details: userDetail,
         password,
       });

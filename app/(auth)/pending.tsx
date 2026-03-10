@@ -13,7 +13,6 @@ const CHECKLIST = [
   { icon: "checkmark-circle", label: "Details submitted", done: true },
   { icon: "checkmark-circle", label: "Mobile number verified", done: true },
   { icon: "checkmark-circle", label: "Email address verified", done: true },
-  { icon: "time-outline", label: "Admin approval — pending", done: false },
 ];
 
 export default function PendingScreen() {
@@ -38,40 +37,11 @@ export default function PendingScreen() {
         <View style={styles.logoBox}><Ionicons name="car" size={34} color="#fff" /></View>
         <Text style={styles.brand}>Cars Buy and Sell</Text>
 
-        {/* Pulse icon */}
-        <Animated.View style={[styles.iconCircle, pulseStyle]}>
-          <Ionicons name="hourglass-outline" size={44} color={Colors.warning} />
-        </Animated.View>
 
         <Text style={styles.title}>Awaiting Admin Approval</Text>
         <Text style={styles.message}>
-          Your account has been submitted successfully. Our team will review and approve your request within{" "}
-          <Text style={styles.highlight}>24 hours</Text>.
+          Your account has been successfully created please Signin.
         </Text>
-
-        {/* Checklist */}
-        <View style={styles.checklist}>
-          {CHECKLIST.map((item) => (
-            <View key={item.label} style={styles.checkItem}>
-              <Ionicons
-                name={item.icon as any}
-                size={18}
-                color={item.done ? Colors.success : Colors.warning}
-              />
-              <Text style={[styles.checkLabel, !item.done && { color: Colors.warning, fontFamily: "Urbanist_600SemiBold" as const }]}>
-                {item.label}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Info box */}
-        <View style={styles.infoBox}>
-          <Ionicons name="mail-outline" size={15} color={Colors.info} />
-          <Text style={styles.infoText}>
-            You'll receive an email notification once your account is approved.
-          </Text>
-        </View>
 
         <Pressable
           style={({ pressed }) => [styles.backBtn, { opacity: pressed ? 0.85 : 1 }]}

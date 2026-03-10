@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View, Text, TextInput, Pressable, StyleSheet,
   ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform,
@@ -9,6 +9,9 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { apiRequestDirect } from "@/lib/auth";
+import Animated, {
+  useSharedValue, useAnimatedStyle, withTiming, withSequence, Easing,
+} from "react-native-reanimated";
 
 const OTP_LENGTH = 6;
 
@@ -34,7 +37,29 @@ export default function VerifyEmailScreen() {
   const [resending, setResending] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [showToast, setShowToast] = useState(false);
   const inputRefs = useRef<(TextInput | null)[]>([]);
+
+  // Animated toast
+  const toastTranslateY = useSharedValue(80);
+  const toastOpacity = useSharedValue(0);
+  const toastStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: toastTranslateY.value }],
+    opacity: toastOpacity.value,
+  }));
+
+  useEffect(() => {
+    if (showToast) {
+      // Slide in
+      toastTranslateY.value = withTiming(0, { duration: 350, easing: Easing.out(Easing.exp) });
+      toastOpacity.value = withTiming(1, { duration: 300 });
+      // After 2.5s redirect to login
+      const timer = setTimeout(() => {
+        router.replace("/(auth)/login");
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [showToast]);
 
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
@@ -56,13 +81,13 @@ export default function VerifyEmailScreen() {
     if (otpValue.length < OTP_LENGTH) { setError("Please enter all 6 digits"); return; }
     setError(""); setLoading(true);
     try {
-      const res = await apiRequestDirect("POST", "http://192.168.1.102:8000/auth/verify-email", { otp: otpValue, email });
+      const res = await apiRequestDirect("POST", "http://169.254.61.129 :8000/auth/verify-email", { otp: otpValue, email });
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
       if (res.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.replace("/(auth)/pending");
+        setShowToast(true);
       } else {
         setError(data?.message || data?.error || "Invalid OTP");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -74,7 +99,7 @@ export default function VerifyEmailScreen() {
   const handleResend = async () => {
     setResending(true); setError(""); setSuccess("");
     try {
-      const res = await apiRequestDirect("POST", "http://192.168.1.102:8000/auth/send-email-otp", { email });
+      const res = await apiRequestDirect("POST", "http://169.254.61.129 :8000/auth/send-email-otp", { email });
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
@@ -178,12 +203,22 @@ export default function VerifyEmailScreen() {
 
         <Text style={styles.footer}>Powered by <Text style={styles.footerBold}>Raj Motors</Text></Text>
       </ScrollView>
+
+      {/* Success Toast */}
+      {showToast && (
+        <Animated.View style={[styles.toast, { bottom: insets.bottom + 24 }, toastStyle]}>
+          <Ionicons name="checkmark-circle" size={20} color="#fff" />
+          <Text style={styles.toastText}>Your account is created successfully, please login</Text>
+        </Animated.View>
+      )}
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Colors.background },
+  toast: { position: "absolute", left: 20, right: 20, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#16A34A", borderRadius: 14, paddingVertical: 14, paddingHorizontal: 16, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 12, elevation: 8 },
+  toastText: { flex: 1, fontSize: 13, fontFamily: "Urbanist_600SemiBold", color: "#fff", lineHeight: 19 },
   container: { flexGrow: 1, paddingHorizontal: 24, alignItems: "center" },
   logoArea: { alignItems: "center", marginBottom: 20, marginTop: 12 },
   logoBox: { width: 80, height: 80, borderRadius: 22, backgroundColor: Colors.navy, alignItems: "center", justifyContent: "center", marginBottom: 14, shadowColor: Colors.navy, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.22, shadowRadius: 14, elevation: 7 },

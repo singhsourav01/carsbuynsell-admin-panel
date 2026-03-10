@@ -33,7 +33,7 @@ function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: any | 
     lastBidTime.current = now;
     setLoading(true);
     try {
-      const res = await apiRequestDirect("POST", `http://192.168.1.102:8002/user/listings/${auction.lst_id}/bid`, { bidAmount: amount }, true);
+      const res = await apiRequestDirect("POST", `http://169.254.61.129 :8002/user/listings/${auction.lst_id}/bid`, { bidAmount: amount }, true);
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
@@ -125,7 +125,14 @@ export default function LiveScreen() {
   const [bidVisible, setBidVisible] = useState(false);
   const [subVisible, setSubVisible] = useState(false);
   const [localBids, setLocalBids] = useState<Record<string, number>>({});
+  const [checkingSub, setCheckingSub] = useState(false);
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
+
+  const handleBidNowPress = useCallback((auction: any) => {
+    setSelectedAuction(auction);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSubVisible(true);
+  }, []);
 
   // API data
   const [auctions, setAuctions] = useState<any[]>([]);
@@ -135,7 +142,7 @@ export default function LiveScreen() {
   const fetchAuctions = useCallback(async (isRefresh = false) => {
     if (isRefresh) setIsRefreshing(true);
     try {
-      const res = await apiRequestDirect("GET", "http://192.168.1.102:8002/user/listings?type=AUCTION");
+      const res = await apiRequestDirect("GET", "http://169.254.61.129 :8002/user/listings?type=AUCTION");
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
@@ -168,7 +175,7 @@ export default function LiveScreen() {
 
   const handlePress = useCallback((a: any) => { router.push(`/listing/${a.lst_id}` as any); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }, []);
   const keyExtractor = useCallback((item: any) => item.lst_id, []);
-  const renderItem = useCallback(({ item }: { item: any }) => <AuctionCard item={item} onPress={() => handlePress(item)} />, [handlePress]);
+  const renderItem = useCallback(({ item }: { item: any }) => <AuctionCard item={item} onPress={() => handleBidNowPress(item)} />, [handleBidNowPress]);
 
   return (
     <View style={[styles.container, { paddingTop: topPad }]}>
@@ -187,7 +194,11 @@ export default function LiveScreen() {
         />
       )}
       <BidSheet auction={selectedAuction} visible={bidVisible} onClose={() => setBidVisible(false)} onBidSuccess={(bid) => { if (selectedAuction) setLocalBids(p => ({ ...p, [selectedAuction.lst_id]: bid })); }} />
-      <SubscriptionModal visible={subVisible} onClose={() => setSubVisible(false)} onSuccess={() => { setSubVisible(false); if (selectedAuction) setBidVisible(true); }} />
+      <SubscriptionModal
+        visible={subVisible}
+        onClose={() => setSubVisible(false)}
+        onSuccess={() => { setSubVisible(false); if (selectedAuction) setBidVisible(true); }}
+      />
     </View>
   );
 }

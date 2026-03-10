@@ -19,6 +19,7 @@ import { Colors } from "@/constants/colors";
 import { formatCurrency } from "@/utils/formatters";
 import { CountdownTimer } from "@/components/CountdownTimer";
 import { apiRequestDirect, getToken } from "@/lib/auth";
+import { SubscriptionModal } from "@/components/SubscriptionModal";
 
 const { width } = Dimensions.get("window");
 
@@ -30,19 +31,37 @@ export default function ListingDetailScreen() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [activeImageIdx, setActiveImageIdx] = useState(0);
+    const [subVisible, setSubVisible] = useState(false);
+    const [pendingAction, setPendingAction] = useState<"bid" | "buy" | null>(null);
+    const [bids, setBids] = useState<any[]>([]);
 
     const fetchListing = useCallback(async () => {
         setIsLoading(true);
         setError(null);
         try {
-            const res = await apiRequestDirect("GET", `http://192.168.1.102:8002/user/listings/${id}`);
-            const rawText = await res.text();
-            let data: any = {};
-            try { data = JSON.parse(rawText); } catch { data = {}; }
-            if (res.ok && data?.data) {
-                setListing(data.data);
+            // Fetch listing details and bids concurrently
+            const [listingRes, bidsRes] = await Promise.all([
+                apiRequestDirect("GET", `http://169.254.61.129:8002/user/listings/${id}`),
+                apiRequestDirect("GET", `http://169.254.61.129:8002/user/listings/${id}/bids`)
+            ]);
+
+            const listingRaw = await listingRes.text();
+            let listingData: any = {};
+            try { listingData = JSON.parse(listingRaw); } catch { listingData = {}; }
+
+            if (listingRes.ok && listingData?.data) {
+                setListing(listingData.data);
             } else {
-                setError(data?.message || "Failed to load listing");
+                setError(listingData?.message || "Failed to load listing");
+            }
+
+            if (listingData?.data?.lst_type === "AUCTION" && bidsRes.ok) {
+                const bidsRaw = await bidsRes.text();
+                let bidsData: any = {};
+                try { bidsData = JSON.parse(bidsRaw); } catch { bidsData = {}; }
+                if (bidsData?.data) {
+                    setBids(bidsData.data);
+                }
             }
         } catch {
             setError("Network error. Please check your connection.");
@@ -62,7 +81,7 @@ export default function ListingDetailScreen() {
         try {
             const res = await apiRequestDirect(
                 "POST",
-                `http://192.168.1.102:8002/user/listings/${id}/buy`,
+                `http://169.254.61.129 :8002/user/listings/${id}/buy`,
                 {},
                 true,
             );
@@ -81,6 +100,13 @@ export default function ListingDetailScreen() {
             Alert.alert("Network Error", "Please check your connection and try again.");
         }
     }
+
+    function handleActionPress(action: "bid" | "buy") {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setPendingAction(action);
+        setSubVisible(true);
+    }
+
 
     const isAuction = listing?.lst_type === "AUCTION";
     const images = listing?.images || [];
@@ -269,6 +295,33 @@ export default function ListingDetailScreen() {
                         </View>
                     )}
                 </View>
+                {/* Bid History */}
+                {isAuction && bids.length > 0 && (
+                    <View style={s.bidsCard}>
+                        <Text style={s.sectionTitle}>Bid History</Text>
+                        <View style={s.bidsList}>
+                            {bids.map((bid: any, idx) => (
+                                <View key={bid.bid_id || idx} style={s.bidItem}>
+                                    <View style={s.bidderInfo}>
+                                        <View style={s.bidderAvatar}>
+                                            <Ionicons name="person" size={16} color={Colors.primary} />
+                                        </View>
+                                        <View>
+                                            <Text style={s.bidderName}>{bid.user?.user_full_name || "Unknown Bidder"}</Text>
+                                            <Text style={s.bidTime}>
+                                                {new Date(bid.bid_time || bid.created_at || new Date()).toLocaleString("en-IN", {
+                                                    dateStyle: "short",
+                                                    timeStyle: "short"
+                                                })}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    <Text style={s.bidAmount}>{formatCurrency(Number(bid.bid_amount || 0))}</Text>
+                                </View>
+                            ))}
+                        </View>
+                    </View>
+                )}
             </ScrollView>
 
             {/* Bottom Action Bar */}
@@ -279,15 +332,7 @@ export default function ListingDetailScreen() {
                 </View>
                 <Pressable
                     style={({ pressed }) => [s.actionBtn, { opacity: pressed ? 0.85 : 1 }]}
-                    onPress={async () => {
-                        console.log("=== BUTTON TAPPED ===", isAuction ? "AUCTION" : "BUY_NOW");
-                        if (isAuction) {
-                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                            Alert.alert("Place a Bid", "Bidding feature coming soon.");
-                        } else {
-                            await handleBuyNow();
-                        }
-                    }}
+                    onPress={() => handleActionPress(isAuction ? "bid" : "buy")}
                 >
                     <LinearGradient
                         colors={isAuction ? ["#FF6B6B", Colors.danger] : [Colors.heroLight, Colors.hero]}
@@ -302,6 +347,17 @@ export default function ListingDetailScreen() {
                     </LinearGradient>
                 </Pressable>
             </View>
+
+            <SubscriptionModal
+                visible={subVisible}
+                onClose={() => { setSubVisible(false); setPendingAction(null); }}
+                onSuccess={() => {
+                    setSubVisible(false);
+                    if (pendingAction === "buy") handleBuyNow();
+                    else if (pendingAction === "bid") Alert.alert("Place a Bid", "Bidding coming soon.");
+                    setPendingAction(null);
+                }}
+            />
         </View>
     );
 }
@@ -407,7 +463,33 @@ const s = StyleSheet.create({
         borderWidth: 1, borderColor: "#FEF3C7",
     },
     infoLabel: { fontSize: 11, fontFamily: "Urbanist_400Regular", color: Colors.textMuted },
-    infoValue: { fontSize: 14, fontFamily: "Urbanist_600SemiBold", color: Colors.text },
+    infoValue: { fontSize: 13, color: Colors.textMuted, marginTop: 4, fontFamily: "Inter-Medium" },
+    bidsCard: { paddingHorizontal: 20, marginTop: 16, marginBottom: 20 },
+    bidsList: {
+        backgroundColor: Colors.card,
+        borderRadius: 16,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: Colors.cardBorder,
+    },
+    bidItem: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.cardBorder,
+    },
+    bidderInfo: { flexDirection: "row", alignItems: "center", gap: 12 },
+    bidderAvatar: {
+        width: 32, height: 32, borderRadius: 16,
+        backgroundColor: Colors.primaryLight,
+        justifyContent: "center", alignItems: "center",
+        borderWidth: 1, borderColor: "rgba(0,186,180,0.2)"
+    },
+    bidderName: { color: Colors.text, fontSize: 14, fontFamily: "Urbanist_600SemiBold" },
+    bidTime: { color: Colors.textMuted, fontSize: 12, marginTop: 2, fontFamily: "Urbanist_400Regular" },
+    bidAmount: { color: Colors.success, fontSize: 15, fontFamily: "Urbanist_700Bold" },
 
     // Bottom Bar
     bottomBar: {
@@ -423,4 +505,4 @@ const s = StyleSheet.create({
     actionBtn: { flex: 1, borderRadius: 14, overflow: "hidden" },
     actionBtnGrad: { height: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
     actionBtnText: { fontSize: 15, fontFamily: "Urbanist_700Bold", color: "#fff" },
-});
+}); 

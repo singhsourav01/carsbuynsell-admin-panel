@@ -1,42 +1,98 @@
-import React, { useState } from "react";
-import { Modal, View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView } from "react-native";
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  Modal, View, Text, Pressable, StyleSheet,
+  ActivityIndicator, Alert, ScrollView,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
-import { apiRequest } from "@/lib/auth";
-import { useQueryClient } from "@tanstack/react-query";
+import {
+  fetchMySubscription,
+  createSubscriptionOrder,
+  verifySubscriptionPayment,
+  ActiveSubscription,
+} from "@/lib/subscription";
+
+// Hardcoded plan display values — matches backend SUBSCRIPTION_PRICE & SUBSCRIPTION_LIMIT
+const DISPLAY_PRICE = 10000;
+const DISPLAY_USES = 3;
 
 interface SubscriptionModalProps {
   visible: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  mode?: "subscribe" | "renew";
 }
 
-const PLANS = [
-  { id: "BASIC", name: "Basic", price: 499, listings: 2, features: ["2 vehicle actions", "View all auctions", "Basic support"], popular: false },
-  { id: "STANDARD", name: "Standard", price: 999, listings: 4, features: ["4 vehicle actions", "Priority bidding", "Sell 2 vehicles", "24/7 support"], popular: true },
-  { id: "PREMIUM", name: "Premium", price: 1999, listings: 10, features: ["10 vehicle actions", "Exclusive auctions", "Sell unlimited", "Dedicated manager"], popular: false },
-];
+export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionModalProps) {
+  // Active subscription check — runs in background when modal opens
+  const [activeSub, setActiveSub] = useState<ActiveSubscription | null>(null);
+  const [subChecked, setSubChecked] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
 
-export function SubscriptionModal({ visible, onClose, onSuccess, mode = "subscribe" }: SubscriptionModalProps) {
-  const [selected, setSelected] = useState("STANDARD");
-  const [loading, setLoading] = useState(false);
-  const qc = useQueryClient();
-
-  const handlePurchase = async () => {
-    setLoading(true);
+  const loadData = useCallback(async () => {
+    setSubChecked(false);
+    setActiveSub(null);
     try {
-      const res = await apiRequest("POST", "/api/subscriptions/purchase", { plan: selected });
-      const data = await res.json();
-      if (data.success) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        qc.invalidateQueries({ queryKey: ["/api/subscriptions/me"] });
-        onSuccess();
-      }
-    } catch { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); }
-    finally { setLoading(false); }
+      const sub = await fetchMySubscription();
+      setActiveSub(sub);
+    } catch {
+      // ignore
+    } finally {
+      setSubChecked(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (visible) {
+      setSubscribing(false);
+      loadData();
+    }
+  }, [visible, loadData]);
+
+  const hasActiveSub = subChecked && !!activeSub && activeSub.sub_remaining_uses > 0;
+
+  const handleSubscribe = () => {
+    if (subscribing) return; // guard against double tap
+
+    // Show confirmation FIRST — no API call yet, instant response
+    Alert.alert(
+      "Confirm Subscription",
+      `Pay ₹${DISPLAY_PRICE.toLocaleString("en-IN")} to unlock vehicle actions\n\n✓ ${DISPLAY_USES} vehicle transactions (bid or buy)\n✓ Valid until all transactions are used\n✓ Secure Razorpay payment`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: `Pay ₹${DISPLAY_PRICE.toLocaleString("en-IN")}`,
+          onPress: () => proceedWithPayment(),
+        },
+      ],
+    );
+  };
+
+  const proceedWithPayment = async () => {
+    setSubscribing(true);
+    try {
+      console.log("[SUB] User confirmed payment — calling create-order...");
+      const order = await createSubscriptionOrder();
+      console.log("[SUB] Order created:", order.razorpay_order_id, "amount:", order.amount);
+
+      // Verify payment with test credentials
+      // Replace testPaymentId/testSignature with real Razorpay SDK values when available
+      const testPaymentId = `pay_test_${Date.now()}`;
+      const testSignature = `sig_test_${Date.now()}`;
+      await verifySubscriptionPayment(
+        order.razorpay_order_id,
+        testPaymentId,
+        testSignature,
+      );
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onSuccess();
+    } catch (err: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Subscription Error", err?.message || "Could not create payment. Please try again.");
+      setSubscribing(false);
+    }
   };
 
   return (
@@ -44,49 +100,147 @@ export function SubscriptionModal({ visible, onClose, onSuccess, mode = "subscri
       <View style={styles.overlay}>
         <View style={styles.sheet}>
           <View style={styles.grabber} />
+
+          {/* Header */}
           <View style={styles.header}>
-            <View>
-              <Text style={styles.title}>{mode === "renew" ? "Renew Subscription" : "Unlock Full Access"}</Text>
-              <Text style={styles.subtitle}>Choose a plan to bid and sell vehicles</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>Unlock Vehicle Actions</Text>
+              <Text style={styles.subtitle}>
+                {subChecked && hasActiveSub
+                  ? `${activeSub!.sub_remaining_uses} of ${DISPLAY_USES} transactions remaining`
+                  : "One subscription · 3 transactions"}
+              </Text>
             </View>
-            <Pressable onPress={onClose} style={styles.closeBtn}><Ionicons name="close" size={20} color={Colors.textSecondary} /></Pressable>
+            <Pressable onPress={onClose} style={styles.closeBtn}>
+              <Ionicons name="close" size={20} color={Colors.textSecondary} />
+            </Pressable>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.plansList}>
-            {PLANS.map(plan => {
-              const isSel = selected === plan.id;
-              return (
-                <Pressable key={plan.id} onPress={() => { setSelected(plan.id); Haptics.selectionAsync(); }} style={[styles.planCard, isSel && styles.planCardActive]}>
-                  {plan.popular && <View style={styles.popularTag}><Text style={styles.popularTagText}>POPULAR</Text></View>}
-                  <View style={styles.planTop}>
-                    <View>
-                      <Text style={[styles.planName, isSel && { color: Colors.primary }]}>{plan.name}</Text>
-                      <Text style={styles.planListings}>{plan.listings} vehicle actions</Text>
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.body}
+          >
+            {/* Active subscription card (only shown once check is done) */}
+            {subChecked && hasActiveSub ? (
+              <View>
+                <View style={styles.activeCard}>
+                  <LinearGradient
+                    colors={[Colors.heroLight, Colors.hero]}
+                    style={styles.activeGrad}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    <View style={styles.activeIconWrap}>
+                      <Ionicons name="checkmark-circle" size={40} color="#fff" />
                     </View>
-                    <View style={styles.planPriceWrap}>
-                      <Text style={styles.planCur}>₹</Text>
-                      <Text style={[styles.planPrice, isSel && { color: Colors.primary }]}>{plan.price}</Text>
-                      <Text style={styles.planPer}>/mo</Text>
+                    <Text style={styles.activeTitle}>Subscription Active</Text>
+                    <Text style={styles.activePlan}>{activeSub?.plan?.sp_name ?? "Standard Plan"}</Text>
+                    <View style={styles.usesRow}>
+                      {[1, 2, 3].map((n) => (
+                        <View
+                          key={n}
+                          style={[
+                            styles.usesDot,
+                            n <= activeSub!.sub_remaining_uses ? styles.usesDotActive : styles.usesDotUsed,
+                          ]}
+                        />
+                      ))}
                     </View>
+                    <Text style={styles.usesLabel}>
+                      {activeSub!.sub_remaining_uses} of {DISPLAY_USES} transactions left
+                    </Text>
+                  </LinearGradient>
+                </View>
+                <Pressable
+                  style={({ pressed }) => [styles.subBtn, { opacity: pressed ? 0.85 : 1 }]}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onSuccess(); }}
+                >
+                  <LinearGradient
+                    colors={[Colors.heroLight, Colors.hero]}
+                    style={styles.subBtnGrad}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  >
+                    <Ionicons name="flash" size={16} color="#fff" />
+                    <Text style={styles.subBtnText}>Continue</Text>
+                  </LinearGradient>
+                </Pressable>
+              </View>
+            ) : (
+              /* Plan card — always visible immediately (no spinner) */
+              <View>
+                <View style={styles.planCard}>
+                  <View style={styles.planBadge}>
+                    <Ionicons name="star" size={10} color="#fff" />
+                    <Text style={styles.planBadgeText}>SUBSCRIPTION</Text>
                   </View>
-                  {plan.features.map(f => (
-                    <View key={f} style={styles.featureRow}>
-                      <Ionicons name="checkmark-circle" size={14} color={isSel ? Colors.primary : Colors.success} />
-                      <Text style={styles.featureText}>{f}</Text>
+                  <Text style={styles.planName}>Vehicle Access Plan</Text>
+                  <Text style={styles.planDesc}>
+                    Subscribe once to bid or buy up to {DISPLAY_USES} vehicles
+                  </Text>
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceCur}>₹</Text>
+                    <Text style={styles.priceVal}>{DISPLAY_PRICE.toLocaleString("en-IN")}</Text>
+                    <Text style={styles.priceNote}> one-time</Text>
+                  </View>
+                  <View style={styles.divider} />
+                  {[
+                    { icon: "flash", text: `${DISPLAY_USES} vehicle transactions (bid or buy)` },
+                    { icon: "shield-checkmark", text: "Secure Razorpay payment" },
+                    { icon: "time", text: "Valid until all transactions are used" },
+                    { icon: "car-sport", text: "Access all live auctions & buy now listings" },
+                  ].map(({ icon, text }) => (
+                    <View key={text} style={styles.featureRow}>
+                      <View style={styles.featureIcon}>
+                        <Ionicons name={icon as any} size={14} color={Colors.primary} />
+                      </View>
+                      <Text style={styles.featureText}>{text}</Text>
                     </View>
                   ))}
-                  {isSel && <View style={styles.selIndicator}><Ionicons name="radio-button-on" size={20} color={Colors.primary} /></View>}
-                </Pressable>
-              );
-            })}
+                </View>
+
+                <View style={styles.infoBox}>
+                  <Ionicons name="information-circle-outline" size={14} color={Colors.info} />
+                  <Text style={styles.infoText}>
+                    Each successful bid or purchase deducts one transaction. Subscription expires after {DISPLAY_USES} completed transactions.
+                  </Text>
+                </View>
+              </View>
+            )}
           </ScrollView>
-          <View style={styles.footer}>
-            <Pressable style={({ pressed }) => [styles.purchaseBtn, { opacity: pressed ? 0.85 : 1 }]} onPress={handlePurchase} disabled={loading}>
-              <LinearGradient colors={[Colors.heroLight, Colors.hero]} style={styles.purchaseGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                {loading ? <ActivityIndicator color="#fff" /> : <><Ionicons name="flash" size={16} color="#fff" /><Text style={styles.purchaseText}>Subscribe — ₹{PLANS.find(p => p.id === selected)?.price}/mo</Text></>}
-              </LinearGradient>
-            </Pressable>
-            <Text style={styles.secureText}>Secure payment · Cancel anytime</Text>
-          </View>
+
+          {/* Footer — only show Subscribe when user doesn't have active sub */}
+          {!(subChecked && hasActiveSub) && (
+            <View style={styles.footer}>
+              <Pressable
+                style={({ pressed }) => [styles.subBtn, { opacity: (pressed || subscribing) ? 0.85 : 1 }]}
+                onPress={handleSubscribe}
+                disabled={subscribing}
+              >
+                <LinearGradient
+                  colors={[Colors.heroLight, Colors.hero]}
+                  style={styles.subBtnGrad}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  {subscribing ? (
+                    <>
+                      <ActivityIndicator color="#fff" size="small" />
+                      <Text style={styles.subBtnText}>Processing…</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="lock-open" size={16} color="#fff" />
+                      <Text style={styles.subBtnText}>
+                        Subscribe — ₹{DISPLAY_PRICE.toLocaleString("en-IN")}
+                      </Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </Pressable>
+              <Text style={styles.secureText}>🔒 Secure payment via Razorpay</Text>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
@@ -94,31 +248,81 @@ export function SubscriptionModal({ visible, onClose, onSuccess, mode = "subscri
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
-  sheet: { backgroundColor: Colors.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: "92%", borderWidth: 1, borderColor: Colors.cardBorder },
-  grabber: { width: 36, height: 4, backgroundColor: Colors.cardBorder, borderRadius: 2, alignSelf: "center", marginTop: 12, marginBottom: 4 },
-  header: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", paddingHorizontal: 24, paddingVertical: 16 },
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
+  sheet: {
+    backgroundColor: Colors.card,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    maxHeight: "88%",
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+  },
+  grabber: {
+    width: 36, height: 4, backgroundColor: Colors.cardBorder,
+    borderRadius: 2, alignSelf: "center", marginTop: 12, marginBottom: 4,
+  },
+  header: {
+    flexDirection: "row", alignItems: "flex-start",
+    justifyContent: "space-between", paddingHorizontal: 24, paddingVertical: 16,
+  },
   title: { fontSize: 22, fontFamily: "Urbanist_700Bold", color: Colors.text, marginBottom: 4 },
   subtitle: { fontSize: 14, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary },
-  closeBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center", backgroundColor: Colors.surface, borderRadius: 10 },
-  plansList: { paddingHorizontal: 24, gap: 12, paddingBottom: 12 },
-  planCard: { backgroundColor: Colors.surface, borderRadius: 16, padding: 16, borderWidth: 1.5, borderColor: Colors.cardBorder, position: "relative", gap: 8 },
-  planCardActive: { borderColor: Colors.primary, backgroundColor: Colors.primaryLight },
-  popularTag: { position: "absolute", top: -1, right: 12, backgroundColor: Colors.primary, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  popularTagText: { fontSize: 10, fontFamily: "Urbanist_700Bold", color: "#fff", letterSpacing: 0.5 },
-  planTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 },
-  planName: { fontSize: 18, fontFamily: "Urbanist_700Bold", color: Colors.text, marginBottom: 2 },
-  planListings: { fontSize: 13, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary },
-  planPriceWrap: { flexDirection: "row", alignItems: "flex-end", gap: 1 },
-  planCur: { fontSize: 14, fontFamily: "Urbanist_600SemiBold", color: Colors.textSecondary, marginBottom: 4 },
-  planPrice: { fontSize: 28, fontFamily: "Urbanist_700Bold", color: Colors.text },
-  planPer: { fontSize: 13, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary, marginBottom: 4 },
-  featureRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  featureText: { fontSize: 13, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary },
-  selIndicator: { position: "absolute", top: 12, right: 12 },
-  footer: { padding: 24, gap: 10, borderTopWidth: 1, borderTopColor: Colors.cardBorder },
-  purchaseBtn: { borderRadius: 14, overflow: "hidden" },
-  purchaseGrad: { height: 54, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
-  purchaseText: { fontSize: 16, fontFamily: "Urbanist_700Bold", color: "#fff" },
+  closeBtn: {
+    width: 36, height: 36, alignItems: "center", justifyContent: "center",
+    backgroundColor: Colors.surface, borderRadius: 10,
+  },
+  body: { paddingHorizontal: 20, paddingBottom: 12, gap: 12 },
+
+  // Active subscription
+  activeCard: { borderRadius: 20, overflow: "hidden", marginBottom: 16 },
+  activeGrad: { padding: 28, alignItems: "center", gap: 10 },
+  activeIconWrap: {
+    width: 72, height: 72, borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center",
+  },
+  activeTitle: { fontSize: 22, fontFamily: "Urbanist_700Bold", color: "#fff" },
+  activePlan: { fontSize: 14, fontFamily: "Urbanist_500Medium", color: "rgba(255,255,255,0.8)" },
+  usesRow: { flexDirection: "row", gap: 10, marginTop: 4 },
+  usesDot: { width: 22, height: 22, borderRadius: 11 },
+  usesDotActive: { backgroundColor: "rgba(255,255,255,0.95)" },
+  usesDotUsed: { backgroundColor: "rgba(255,255,255,0.25)" },
+  usesLabel: { fontSize: 13, fontFamily: "Urbanist_500Medium", color: "rgba(255,255,255,0.85)" },
+
+  // Plan card
+  planCard: {
+    backgroundColor: Colors.surface, borderRadius: 20, padding: 20,
+    borderWidth: 1.5, borderColor: Colors.primary + "33", gap: 10,
+  },
+  planBadge: {
+    alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: Colors.primary, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4,
+  },
+  planBadgeText: { fontSize: 10, fontFamily: "Urbanist_700Bold", color: "#fff", letterSpacing: 0.5 },
+  planName: { fontSize: 20, fontFamily: "Urbanist_700Bold", color: Colors.text },
+  planDesc: { fontSize: 13, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary, lineHeight: 20 },
+  priceRow: { flexDirection: "row", alignItems: "flex-end", gap: 2, marginTop: 4 },
+  priceCur: { fontSize: 18, fontFamily: "Urbanist_600SemiBold", color: Colors.primary, marginBottom: 3 },
+  priceVal: { fontSize: 38, fontFamily: "Urbanist_700Bold", color: Colors.primary, lineHeight: 42 },
+  priceNote: { fontSize: 13, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary, marginBottom: 5 },
+  divider: { height: 1, backgroundColor: Colors.cardBorder, marginVertical: 4 },
+  featureRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  featureIcon: {
+    width: 28, height: 28, borderRadius: 8,
+    backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center",
+  },
+  featureText: { flex: 1, fontSize: 13, fontFamily: "Urbanist_500Medium", color: Colors.textSecondary },
+
+  infoBox: {
+    flexDirection: "row", alignItems: "flex-start", gap: 8,
+    backgroundColor: "#EFF6FF", borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: "#BFDBFE",
+  },
+  infoText: { flex: 1, fontSize: 12, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary, lineHeight: 18 },
+
+  // Footer
+  footer: { padding: 20, gap: 10, borderTopWidth: 1, borderTopColor: Colors.cardBorder },
+  subBtn: { borderRadius: 14, overflow: "hidden" },
+  subBtnGrad: { height: 56, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  subBtnText: { fontSize: 16, fontFamily: "Urbanist_700Bold", color: "#fff" },
   secureText: { textAlign: "center", fontSize: 12, fontFamily: "Urbanist_400Regular", color: Colors.textMuted },
 });
