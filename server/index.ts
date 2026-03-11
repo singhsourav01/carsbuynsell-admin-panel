@@ -3,6 +3,10 @@ import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
+// Load .env variables (RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, etc.)
+import { config } from "dotenv";
+config({ path: path.resolve(process.cwd(), ".env") });
+
 
 const app = express();
 const log = console.log;
@@ -40,7 +44,10 @@ function setupCors(app: express.Application) {
         "Access-Control-Allow-Methods",
         "GET, POST, PUT, DELETE, OPTIONS",
       );
-      res.header("Access-Control-Allow-Headers", "Content-Type");
+      res.header(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization",
+      );
       res.header("Access-Control-Allow-Credentials", "true");
     }
 

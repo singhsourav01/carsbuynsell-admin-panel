@@ -35,14 +35,19 @@ export default function ListingDetailScreen() {
     const [pendingAction, setPendingAction] = useState<"bid" | "buy" | null>(null);
     const [bids, setBids] = useState<any[]>([]);
 
+    // Bidding Modal State
+    const [bidModalVisible, setBidModalVisible] = useState(false);
+    const [bidAmountStr, setBidAmountStr] = useState("");
+    const [isSubmittingBid, setIsSubmittingBid] = useState(false);
+
     const fetchListing = useCallback(async () => {
         setIsLoading(true);
         setError(null);
         try {
             // Fetch listing details and bids concurrently
             const [listingRes, bidsRes] = await Promise.all([
-                apiRequestDirect("GET", `http://169.254.61.129:8002/user/listings/${id}`),
-                apiRequestDirect("GET", `http://169.254.61.129:8002/user/listings/${id}/bids`)
+                apiRequestDirect("GET", `http://localhost:8002/user/listings/${id}`),
+                apiRequestDirect("GET", `http://localhost:8002/user/listings/${id}/bids`)
             ]);
 
             const listingRaw = await listingRes.text();
@@ -81,7 +86,7 @@ export default function ListingDetailScreen() {
         try {
             const res = await apiRequestDirect(
                 "POST",
-                `http://169.254.61.129 :8002/user/listings/${id}/buy`,
+                `http://localhost:8002/user/listings/${id}/buy`,
                 {},
                 true,
             );
@@ -105,6 +110,51 @@ export default function ListingDetailScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         setPendingAction(action);
         setSubVisible(true);
+    }
+
+    async function handlePlaceBid() {
+        const token = await getToken();
+        if (!token) {
+            Alert.alert("Login Required", "Please log in to place a bid.");
+            return;
+        }
+
+        const bidVal = Number(bidAmountStr);
+        const currentPrice = isAuction ? Number(listing.lst_current_bid || listing.lst_price || 0) : 0;
+        const minIncrement = Number(listing.lst_min_increment || 1);
+        const minValid = currentPrice + minIncrement;
+
+        if (!bidVal || isNaN(bidVal) || bidVal < minValid) {
+            Alert.alert("Invalid Bid", `Your bid must be at least ${formatCurrency(minValid)}`);
+            return;
+        }
+
+        setIsSubmittingBid(true);
+        try {
+            const res = await apiRequestDirect(
+                "POST",
+                `http://localhost:8002/user/listings/${id}/bid`,
+                { bid_amount: bidVal },
+                true,
+            );
+            const rawText = await res.text();
+            let data: any = {};
+            try { data = JSON.parse(rawText); } catch { data = {}; }
+            if (res.ok) {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                Alert.alert("Bid Placed!", data?.message || "Your bid has been successfully placed.");
+                setBidModalVisible(false);
+                fetchListing(); // Refresh listing to show the new bid
+            } else {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                Alert.alert("Bid Failed", data?.message || "Something went wrong while placing your bid.");
+            }
+        } catch (err) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            Alert.alert("Network Error", "Please check your connection and try again.");
+        } finally {
+            setIsSubmittingBid(false);
+        }
     }
 
 
@@ -353,11 +403,90 @@ export default function ListingDetailScreen() {
                 onClose={() => { setSubVisible(false); setPendingAction(null); }}
                 onSuccess={() => {
                     setSubVisible(false);
-                    if (pendingAction === "buy") handleBuyNow();
-                    else if (pendingAction === "bid") Alert.alert("Place a Bid", "Bidding coming soon.");
+                    if (pendingAction === "buy") {
+                        handleBuyNow();
+                    } else if (pendingAction === "bid") {
+                        const currentPrice = isAuction ? Number(listing.lst_current_bid || listing.lst_price || 0) : 0;
+                        const minIncrement = Number(listing.lst_min_increment || 1);
+                        setBidAmountStr(String(currentPrice + minIncrement));
+                        setBidModalVisible(true);
+                    }
                     setPendingAction(null);
                 }}
             />
+
+            {/* Bidding Modal */}
+            {bidModalVisible && (
+                <View style={StyleSheet.absoluteFill}>
+                    <View style={s.modalOverlay}>
+                        <View style={s.bidModal}>
+                            <View style={s.bidModalHeader}>
+                                <Text style={s.bidModalTitle}>Place Your Bid</Text>
+                                <Pressable
+                                    onPress={() => setBidModalVisible(false)}
+                                    style={s.bidModalClose}
+                                >
+                                    <Ionicons name="close" size={20} color={Colors.textSecondary} />
+                                </Pressable>
+                            </View>
+                            
+                            <Text style={s.bidModalSubtitle}>
+                                Current Bid: {formatCurrency(Number(listing?.lst_current_bid || listing?.lst_price || 0))}
+                            </Text>
+
+                            <View style={s.bidInputWrapper}>
+                                <Text style={s.currencyPrefix}>₹</Text>
+                                <View style={s.bidInputBg}>
+                                    {/* Create a pseudo-input layout since expo doesn't have a reliable generic text-input inside this component without importing TextInput */}
+                                    <Text style={s.bidInputPlaceholder}>
+                                        {formatCurrency(Number(bidAmountStr)).replace("₹", "")}
+                                    </Text>
+                                </View>
+                            </View>
+                            
+                            {/* Simple generic numeric keypad overlay for cross-platform visual consistency */}
+                            <View style={s.keypadContainer}>
+                                {[1, 2, 3, 4, 5, 6, 7, 8, 9, "C", 0, "⌫"].map((key) => (
+                                    <Pressable
+                                        key={key}
+                                        style={s.keypadKey}
+                                        onPress={() => {
+                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                            if (key === "C") setBidAmountStr("");
+                                            else if (key === "⌫") setBidAmountStr(prev => prev.slice(0, -1));
+                                            else setBidAmountStr(prev => prev + key);
+                                        }}
+                                    >
+                                        <Text style={s.keypadKeyText}>{key}</Text>
+                                    </Pressable>
+                                ))}
+                            </View>
+
+                            <Pressable 
+                                style={({ pressed }) => [s.submitBidBtn, { opacity: (pressed || isSubmittingBid) ? 0.85 : 1 }]}
+                                onPress={handlePlaceBid}
+                                disabled={isSubmittingBid}
+                            >
+                                <LinearGradient
+                                    colors={["#FF6B6B", Colors.danger]}
+                                    style={s.submitBidGrad}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 0 }}
+                                >
+                                    {isSubmittingBid ? (
+                                        <ActivityIndicator color="#fff" size="small" />
+                                    ) : (
+                                        <>
+                                            <Ionicons name="flash" size={18} color="#fff" />
+                                            <Text style={s.submitBidText}>Confirm Bid</Text>
+                                        </>
+                                    )}
+                                </LinearGradient>
+                            </Pressable>
+                        </View>
+                    </View>
+                </View>
+            )}
         </View>
     );
 }
@@ -505,4 +634,27 @@ const s = StyleSheet.create({
     actionBtn: { flex: 1, borderRadius: 14, overflow: "hidden" },
     actionBtnGrad: { height: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
     actionBtnText: { fontSize: 15, fontFamily: "Urbanist_700Bold", color: "#fff" },
+
+    // Bidding Modal
+    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
+    bidModal: {
+        backgroundColor: Colors.card,
+        borderTopLeftRadius: 32, borderTopRightRadius: 32,
+        padding: 24, paddingBottom: 40,
+        shadowColor: "#000", shadowOffset: { width: 0, height: -10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 15,
+    },
+    bidModalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
+    bidModalTitle: { fontSize: 22, fontFamily: "Urbanist_700Bold", color: Colors.text },
+    bidModalClose: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.surface, alignItems: "center", justifyContent: "center" },
+    bidModalSubtitle: { fontSize: 14, fontFamily: "Urbanist_500Medium", color: Colors.textSecondary, marginBottom: 20 },
+    bidInputWrapper: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 24, paddingHorizontal: 16 },
+    currencyPrefix: { fontSize: 32, fontFamily: "Urbanist_700Bold", color: Colors.primary },
+    bidInputBg: { flex: 1, borderBottomWidth: 2, borderBottomColor: Colors.primary, paddingBottom: 8, alignItems: "center" },
+    bidInputPlaceholder: { fontSize: 42, fontFamily: "Urbanist_700Bold", color: Colors.text, textAlign: "center" },
+    keypadContainer: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", marginBottom: 24, gap: 12 },
+    keypadKey: { width: "30%", aspectRatio: 2, backgroundColor: Colors.surface, borderRadius: 12, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: Colors.cardBorder },
+    keypadKeyText: { fontSize: 22, fontFamily: "Urbanist_600SemiBold", color: Colors.text },
+    submitBidBtn: { borderRadius: 16, overflow: "hidden" },
+    submitBidGrad: { height: 56, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
+    submitBidText: { fontSize: 18, fontFamily: "Urbanist_700Bold", color: "#fff" },
 }); 

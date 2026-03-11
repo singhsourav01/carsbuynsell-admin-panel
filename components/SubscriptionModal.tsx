@@ -9,24 +9,24 @@ import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import {
   fetchMySubscription,
+  fetchPlans,
   createSubscriptionOrder,
+  openRazorpayCheckout,
   verifySubscriptionPayment,
   ActiveSubscription,
+  SubscriptionPlan,
 } from "@/lib/subscription";
-
-// Hardcoded plan display values — matches backend SUBSCRIPTION_PRICE & SUBSCRIPTION_LIMIT
-const DISPLAY_PRICE = 10000;
-const DISPLAY_USES = 3;
 
 interface SubscriptionModalProps {
   visible: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  mode?: "subscribe" | "renew";
 }
 
 export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionModalProps) {
-  // Active subscription check — runs in background when modal opens
   const [activeSub, setActiveSub] = useState<ActiveSubscription | null>(null);
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [subChecked, setSubChecked] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
 
@@ -34,8 +34,12 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
     setSubChecked(false);
     setActiveSub(null);
     try {
-      const sub = await fetchMySubscription();
+      const [sub, fetchedPlans] = await Promise.all([
+        fetchMySubscription(),
+        fetchPlans()
+      ]);
       setActiveSub(sub);
+      setPlans(fetchedPlans);
     } catch {
       // ignore
     } finally {
@@ -51,46 +55,59 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
   }, [visible, loadData]);
 
   const hasActiveSub = subChecked && !!activeSub && activeSub.sub_remaining_uses > 0;
-
-  const handleSubscribe = () => {
-    if (subscribing) return; // guard against double tap
-
-    // Show confirmation FIRST — no API call yet, instant response
-    Alert.alert(
-      "Confirm Subscription",
-      `Pay ₹${DISPLAY_PRICE.toLocaleString("en-IN")} to unlock vehicle actions\n\n✓ ${DISPLAY_USES} vehicle transactions (bid or buy)\n✓ Valid until all transactions are used\n✓ Secure Razorpay payment`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: `Pay ₹${DISPLAY_PRICE.toLocaleString("en-IN")}`,
-          onPress: () => proceedWithPayment(),
-        },
-      ],
-    );
+  
+  // Use the first available plan, or a fallback if none loaded
+  const defaultPlan = plans.length > 0 ? plans[0] : {
+    sp_id: "",
+    sp_name: "Loading Plan...",
+    sp_price: 0,
+    sp_duration: 0,
+    sp_description: "Please wait..."
   };
 
-  const proceedWithPayment = async () => {
+  // We assume the uses are fixed to 3 for the UI, or could be fetched if backend supported it.
+  const DISPLAY_USES = 3;
+
+  const handleSubscribe = () => {
+    if (subscribing) return;
+    if (!defaultPlan.sp_id) {
+      Alert.alert("Error", "No subscription plans available at the moment.");
+      return;
+    }
+
+    // Direct to payment to avoid redundant alert, or keep the alert. User requested "once it will open this api, razopay will open". 
+    // We proceed directly without the intermediate Alert since it's already a modal.
+    proceedWithPayment(defaultPlan.sp_id, defaultPlan.sp_price);
+  };
+
+  const proceedWithPayment = async (plan_id: string, price: number) => {
     setSubscribing(true);
     try {
-      console.log("[SUB] User confirmed payment — calling create-order...");
-      const order = await createSubscriptionOrder();
-      console.log("[SUB] Order created:", order.razorpay_order_id, "amount:", order.amount);
+      console.log("[SUB] Starting subscription flow for plan:", plan_id);
 
-      // Verify payment with test credentials
-      // Replace testPaymentId/testSignature with real Razorpay SDK values when available
-      const testPaymentId = `pay_test_${Date.now()}`;
-      const testSignature = `sig_test_${Date.now()}`;
+      // Step 1: Create Razorpay order on backend
+      const order = await createSubscriptionOrder(plan_id);
+      console.log("[SUB] Order created:", order.razorpay_order_id);
+
+      // Step 2: Open Razorpay checkout in the system browser
+      const paymentResult = await openRazorpayCheckout(order);
+      console.log("[SUB] Payment completed:", paymentResult.razorpay_payment_id);
+
+      // Step 3: Verify the payment signature with backend
       await verifySubscriptionPayment(
-        order.razorpay_order_id,
-        testPaymentId,
-        testSignature,
+        paymentResult.razorpay_order_id,
+        paymentResult.razorpay_payment_id,
+        paymentResult.razorpay_signature,
       );
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onSuccess();
     } catch (err: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("Subscription Error", err?.message || "Could not create payment. Please try again.");
+      const message = err?.message || "Could not complete payment. Please try again.";
+      if (!message.toLowerCase().includes("cancel")) {
+        Alert.alert("Payment Failed", message);
+      }
       setSubscribing(false);
     }
   };
@@ -116,12 +133,13 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
             </Pressable>
           </View>
 
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.body}
-          >
-            {/* Active subscription card (only shown once check is done) */}
-            {subChecked && hasActiveSub ? (
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
+            {!subChecked ? (
+               <View style={{ padding: 40, alignItems: "center" }}>
+                 <ActivityIndicator size="large" color={Colors.primary} />
+                 <Text style={{ marginTop: 10, color: Colors.textSecondary }}>Checking subscription...</Text>
+               </View>
+            ) : hasActiveSub ? (
               <View>
                 <View style={styles.activeCard}>
                   <LinearGradient
@@ -167,20 +185,19 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
                 </Pressable>
               </View>
             ) : (
-              /* Plan card — always visible immediately (no spinner) */
               <View>
                 <View style={styles.planCard}>
                   <View style={styles.planBadge}>
                     <Ionicons name="star" size={10} color="#fff" />
                     <Text style={styles.planBadgeText}>SUBSCRIPTION</Text>
                   </View>
-                  <Text style={styles.planName}>Vehicle Access Plan</Text>
+                  <Text style={styles.planName}>{defaultPlan.sp_name}</Text>
                   <Text style={styles.planDesc}>
-                    Subscribe once to bid or buy up to {DISPLAY_USES} vehicles
+                    {defaultPlan.sp_description || `Subscribe once to bid or buy up to ${DISPLAY_USES} vehicles`}
                   </Text>
                   <View style={styles.priceRow}>
                     <Text style={styles.priceCur}>₹</Text>
-                    <Text style={styles.priceVal}>{DISPLAY_PRICE.toLocaleString("en-IN")}</Text>
+                    <Text style={styles.priceVal}>{defaultPlan.sp_price ? defaultPlan.sp_price.toLocaleString("en-IN") : "..."}</Text>
                     <Text style={styles.priceNote}> one-time</Text>
                   </View>
                   <View style={styles.divider} />
@@ -209,13 +226,13 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
             )}
           </ScrollView>
 
-          {/* Footer — only show Subscribe when user doesn't have active sub */}
-          {!(subChecked && hasActiveSub) && (
+          {/* Footer — only show Subscribe when user doesn't have active sub and check is complete */}
+          {subChecked && !hasActiveSub && (
             <View style={styles.footer}>
               <Pressable
                 style={({ pressed }) => [styles.subBtn, { opacity: (pressed || subscribing) ? 0.85 : 1 }]}
                 onPress={handleSubscribe}
-                disabled={subscribing}
+                disabled={subscribing || !defaultPlan.sp_id}
               >
                 <LinearGradient
                   colors={[Colors.heroLight, Colors.hero]}
@@ -226,13 +243,13 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
                   {subscribing ? (
                     <>
                       <ActivityIndicator color="#fff" size="small" />
-                      <Text style={styles.subBtnText}>Processing…</Text>
+                      <Text style={styles.subBtnText}>Opening Payment…</Text>
                     </>
                   ) : (
                     <>
                       <Ionicons name="lock-open" size={16} color="#fff" />
                       <Text style={styles.subBtnText}>
-                        Subscribe — ₹{DISPLAY_PRICE.toLocaleString("en-IN")}
+                        Subscribe — ₹{defaultPlan.sp_price ? defaultPlan.sp_price.toLocaleString("en-IN") : "..."}
                       </Text>
                     </>
                   )}

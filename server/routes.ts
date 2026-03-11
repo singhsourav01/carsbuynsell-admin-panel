@@ -1,5 +1,30 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
+import * as fs from "fs";
+import * as path from "path";
+import * as crypto from "crypto";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const RazorpaySDK = require("razorpay");
+
+// ── Razorpay client — created lazily so dotenv is already loaded ───────────────
+function getRazorpay() {
+  const key_id     = process.env.RAZORPAY_KEY_ID     || "";
+  const key_secret = process.env.RAZORPAY_KEY_SECRET || "";
+  if (!key_id || !key_secret) {
+    throw new Error("Razorpay keys not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in your .env file.");
+  }
+  return new RazorpaySDK({ key_id, key_secret });
+}
+
+// In-memory pending subscription store keyed by Razorpay order ID
+// (Replaces DB in this local dev server)
+const pendingSubs: Record<string, { user_id: string; plan_id: string; expires_at: string }> = {};
+const activeSubs: Record<string, {
+  sub_id: string; sub_status: string; sub_remaining_uses: number;
+  sub_expires_at: string; sub_starts_at: string;
+  sub_razorpay_order_id: string; sub_razorpay_payment_id: string;
+  plan: { sp_id: string; sp_name: string; sp_price: number; sp_duration: number; sp_description: string };
+}> = {};
 
 interface User {
   id: string;
@@ -343,29 +368,175 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ──────────────────────────────────────────────
-  // SUBSCRIPTIONS
+  // RAZORPAY CHECKOUT PAGE
   // ──────────────────────────────────────────────
 
-  app.get("/api/subscriptions/me", (_req: Request, res: Response) => {
+  // Serves the Razorpay Standard Checkout HTML page.
+  // The mobile app opens this in expo-web-browser.
+  // Query params: order_id, amount, currency, key_id, name, email, callback_scheme
+  app.get("/razorpay-checkout", (_req: Request, res: Response) => {
+    const templatePath = path.resolve(process.cwd(), "server", "templates", "razorpay-checkout.html");
+    const html = fs.readFileSync(templatePath, "utf-8");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    res.status(200).send(html);
+  });
+
+  // ──────────────────────────────────────────────
+  // USER SUBSCRIPTIONS  (paths match backend microservice)
+  // ──────────────────────────────────────────────
+
+  /** GET /user/subscriptions/plans — returns all active plans */
+  app.get("/user/subscriptions/plans", (_req: Request, res: Response) => {
     res.json({
       success: true,
-      data: { status: "ACTIVE", plan: "STANDARD", remainingListings: 2, totalListings: 4, expiresAt: "2026-05-20T00:00:00.000Z", price: 999 },
+      statusCode: 200,
+      data: [
+        {
+          sp_id: "plan_vehicle_access",
+          sp_name: "Vehicle Access Plan",
+          sp_description: "Bid or buy up to 3 vehicles",
+          sp_price: 10000,
+          sp_duration: 365,
+          sp_is_active: true,
+        },
+      ],
+      message: "Plans fetched successfully",
     });
   });
 
-  app.post("/api/subscriptions/purchase", (req: Request, res: Response) => {
-    const { plan } = req.body;
-    res.json({
-      success: true,
-      data: { subscriptionId: generateToken(), plan: plan || "STANDARD", remainingListings: 4, expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), message: "Subscription activated!" },
-    });
+  /** GET /user/subscriptions/me — returns the current user's active subscription */
+  app.get("/user/subscriptions/me", (req: Request, res: Response) => {
+    // Identify user from Bearer token stored in sessions
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    const userId = token ? sessions[token] : null;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, statusCode: 401, message: "Unauthorized" });
+    }
+
+    const sub = activeSubs[userId];
+    if (!sub || sub.sub_remaining_uses <= 0) {
+      return res.status(404).json({ success: false, statusCode: 404, message: "No active subscription found" });
+    }
+
+    return res.json({ success: true, statusCode: 200, data: sub, message: "Subscription fetched" });
+  });
+
+  /** POST /user/subscriptions/create-order — creates a Razorpay order */
+  app.post("/user/subscriptions/create-order", async (req: Request, res: Response) => {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    const userId = token ? sessions[token] : null;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, statusCode: 401, message: "Unauthorized" });
+    }
+
+    // Block if user already has active subscription
+    const existing = activeSubs[userId];
+    if (existing && existing.sub_remaining_uses > 0) {
+      return res.status(409).json({ success: false, statusCode: 409, message: "You already have an active subscription" });
+    }
+
+    try {
+      const razorpay = getRazorpay(); // lazy init — keys guaranteed by this point
+      const amountInPaise = 10000 * 100; // ₹10,000 in paise
+      const plan_id = req.body.plan_id || "plan_vehicle_access";
+
+      const razorpayOrder = await razorpay.orders.create({
+        amount: amountInPaise,
+        currency: "INR",
+        notes: { user_id: userId, plan_id },
+      });
+
+      // Store pending subscription
+      const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+      pendingSubs[razorpayOrder.id] = { user_id: userId, plan_id, expires_at: expiresAt };
+
+      return res.status(201).json({
+        success: true,
+        statusCode: 201,
+        data: {
+          razorpay_order_id: razorpayOrder.id,
+          amount: amountInPaise,
+          currency: "INR",
+          key_id: process.env.RAZORPAY_KEY_ID || "",
+        },
+        message: "Order created successfully",
+      });
+    } catch (err: any) {
+      console.error("[RZP] Create order error:", err);
+      return res.status(500).json({
+        success: false, statusCode: 500,
+        message: err?.error?.description || err?.message || "Failed to create Razorpay order",
+      });
+    }
+  });
+
+  /** POST /user/subscriptions/verify-payment — verifies signature and activates subscription */
+  app.post("/user/subscriptions/verify-payment", (req: Request, res: Response) => {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    const userId = token ? sessions[token] : null;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, statusCode: 401, message: "Unauthorized" });
+    }
+
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ success: false, statusCode: 400, message: "Missing payment fields" });
+    }
+
+    const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "";
+
+    // Verify HMAC-SHA256 signature
+    const body = razorpay_order_id + "|" + razorpay_payment_id;
+    const expectedSignature = crypto
+      .createHmac("sha256", RAZORPAY_KEY_SECRET)
+      .update(body)
+      .digest("hex");
+
+    if (expectedSignature !== razorpay_signature) {
+      return res.status(400).json({ success: false, statusCode: 400, message: "Invalid payment signature" });
+    }
+
+    // Look up pending subscription
+    const pending = pendingSubs[razorpay_order_id];
+    if (!pending) {
+      return res.status(404).json({ success: false, statusCode: 404, message: "Pending subscription not found" });
+    }
+
+    // Activate subscription
+    const now = new Date().toISOString();
+    const subscription = {
+      sub_id: generateToken(),
+      sub_status: "ACTIVE",
+      sub_remaining_uses: 3,
+      sub_expires_at: pending.expires_at,
+      sub_starts_at: now,
+      sub_razorpay_order_id: razorpay_order_id,
+      sub_razorpay_payment_id: razorpay_payment_id,
+      plan: {
+        sp_id: pending.plan_id,
+        sp_name: "Vehicle Access Plan",
+        sp_price: 10000,
+        sp_duration: 365,
+        sp_description: "Bid or buy up to 3 vehicles",
+      },
+    };
+
+    activeSubs[userId] = subscription;
+    delete pendingSubs[razorpay_order_id];
+
+    return res.json({ success: true, statusCode: 200, data: subscription, message: "Payment verified & subscription activated" });
   });
 
   // ──────────────────────────────────────────────
   // SELL VEHICLE
   // ──────────────────────────────────────────────
 
-  app.post("/api/user/sell-request", (req: Request, res: Response) => {
+  app.post("/user/sell-request", (req: Request, res: Response) => {
     const { title, basePrice } = req.body;
     if (!title || !basePrice) return res.status(400).json({ success: false, message: "Title and price are required" });
     res.json({

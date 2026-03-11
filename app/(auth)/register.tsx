@@ -62,7 +62,7 @@ export default function RegisterScreen() {
     setLoading(true);
     try {
       const fullPhone = `${phone.replace(/\D/g, "")}`;
-      const res = await apiRequestDirect("POST", "http://169.254.61.129 :8000/auth/signup", {
+      const res = await apiRequestDirect("POST", "http://localhost:8000/auth/signup", {
         full_name: fullName.trim(),
         email: email.trim().toLowerCase(),
         password,
