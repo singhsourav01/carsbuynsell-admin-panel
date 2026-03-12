@@ -66,7 +66,7 @@ export default function BuyNowScreen() {
   const fetchListings = useCallback(async (isRefresh = false) => {
     if (isRefresh) setIsRefreshing(true);
     try {
-      const res = await apiRequestDirect("GET", "http://localhost:8002/user/listings?type=BUY_NOW");
+      const res = await apiRequestDirect("GET", "http://13.201.55.131:3002/user/listings?type=BUY_NOW");
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }

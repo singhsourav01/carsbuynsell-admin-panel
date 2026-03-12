@@ -81,7 +81,7 @@ export default function VerifyEmailScreen() {
     if (otpValue.length < OTP_LENGTH) { setError("Please enter all 6 digits"); return; }
     setError(""); setLoading(true);
     try {
-      const res = await apiRequestDirect("POST", "http://localhost:8000/auth/verify-email", { otp: otpValue, email });
+      const res = await apiRequestDirect("POST", "http://13.201.55.131:3001/auth/verify-email", { otp: otpValue, email });
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
@@ -99,7 +99,7 @@ export default function VerifyEmailScreen() {
   const handleResend = async () => {
     setResending(true); setError(""); setSuccess("");
     try {
-      const res = await apiRequestDirect("POST", "http://localhost:8000/auth/send-email-otp", { email });
+      const res = await apiRequestDirect("POST", "http://13.201.55.131:3001/auth/send-email-otp", { email });
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }

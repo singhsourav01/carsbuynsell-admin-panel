@@ -6,13 +6,13 @@ import * as Linking from "expo-linking";
 WebBrowser.maybeCompleteAuthSession();
 
 // ── Real backend (port 8002) handles all subscription API logic ──────────────
-const SUB_BASE = "http://localhost:8002";
+const SUB_BASE = "http://13.201.55.131:3002";
 const SUB_PATH = "/user/subscriptions";
 
 // ── Local Express server (port 5000) serves the Razorpay checkout HTML page ──
 // NOTE: This must remain 5000, because the real backend (8002) does not have
 // the razorpay-checkout.html file.
-const LOCAL_SERVER = process.env.EXPO_PUBLIC_LOCAL_SERVER || "http://localhost:5000";
+const LOCAL_SERVER = process.env.EXPO_PUBLIC_LOCAL_SERVER || "http://13.201.55.131:3002";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types

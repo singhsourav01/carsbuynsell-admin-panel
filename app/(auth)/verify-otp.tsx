@@ -73,7 +73,7 @@ export default function VerifyOtpScreen() {
         setPhoneError("");
         setPhoneLoading(true);
         try {
-            const res = await apiRequestDirect("POST", "http://localhost:8000/auth/verify-phone", {
+            const res = await apiRequestDirect("POST", "http://13.201.55.131:3001/auth/verify-phone", {
                 otp: otpValue,
                 phone,
             });
@@ -104,7 +104,7 @@ export default function VerifyOtpScreen() {
         setEmailError("");
         setEmailLoading(true);
         try {
-            const res = await apiRequestDirect("POST", "http://localhost:8000/auth/verify-email", {
+            const res = await apiRequestDirect("POST", "http://13.201.55.131:3001/auth/verify-email", {
                 otp: otpValue,
                 email,
             });

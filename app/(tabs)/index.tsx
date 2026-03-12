@@ -119,7 +119,7 @@ export default function HomeScreen() {
   const fetchHome = useCallback(async (isRefresh = false) => {
     if (isRefresh) setIsRefreshing(true);
     try {
-      const res = await apiRequestDirect("GET", "http://localhost:8002/user/home");
+      const res = await apiRequestDirect("GET", "http://13.201.55.131:3002/user/home");
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }

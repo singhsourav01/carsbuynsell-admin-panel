@@ -33,7 +33,7 @@ function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: any | 
     lastBidTime.current = now;
     setLoading(true);
     try {
-      const res = await apiRequestDirect("POST", `http://localhost:8002/user/listings/${auction.lst_id}/bid`, { bidAmount: amount }, true);
+      const res = await apiRequestDirect("POST", `http://13.201.55.131:3002/user/listings/${auction.lst_id}/bid`, { bidAmount: amount }, true);
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
@@ -142,7 +142,7 @@ export default function LiveScreen() {
   const fetchAuctions = useCallback(async (isRefresh = false) => {
     if (isRefresh) setIsRefreshing(true);
     try {
-      const res = await apiRequestDirect("GET", "http://localhost:8002/user/listings?type=AUCTION");
+      const res = await apiRequestDirect("GET", "http://13.201.55.131:3002/user/listings?type=AUCTION");
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }

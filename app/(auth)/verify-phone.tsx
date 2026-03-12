@@ -56,7 +56,7 @@ export default function VerifyPhoneScreen() {
     if (otpValue.length < OTP_LENGTH) { setError("Please enter all 6 digits"); return; }
     setError(""); setLoading(true);
     try {
-      const res = await apiRequestDirect("POST", "http://localhost:8000/auth/verify-phone", { otp: otpValue, phone });
+      const res = await apiRequestDirect("POST", "http://13.201.55.131:3001/auth/verify-phone", { otp: otpValue, phone });
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
@@ -74,7 +74,7 @@ export default function VerifyPhoneScreen() {
   const handleResend = async () => {
     setResending(true); setError(""); setSuccess("");
     try {
-      const res = await apiRequestDirect("POST", "http://localhost:8000/auth/send-phone-otp", { phone });
+      const res = await apiRequestDirect("POST", "http://13.201.55.131:3001/auth/send-phone-otp", { phone });
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }

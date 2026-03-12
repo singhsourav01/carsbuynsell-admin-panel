@@ -46,8 +46,8 @@ export default function ListingDetailScreen() {
         try {
             // Fetch listing details and bids concurrently
             const [listingRes, bidsRes] = await Promise.all([
-                apiRequestDirect("GET", `http://localhost:8002/user/listings/${id}`),
-                apiRequestDirect("GET", `http://localhost:8002/user/listings/${id}/bids`)
+                apiRequestDirect("GET", `http://13.201.55.131:3002/user/listings/${id}`),
+                apiRequestDirect("GET", `http://13.201.55.131:3002/user/listings/${id}/bids`)
             ]);
 
             const listingRaw = await listingRes.text();
@@ -86,7 +86,7 @@ export default function ListingDetailScreen() {
         try {
             const res = await apiRequestDirect(
                 "POST",
-                `http://localhost:8002/user/listings/${id}/buy`,
+                `http://13.201.55.131:3002/user/listings/${id}/buy`,
                 {},
                 true,
             );
@@ -133,7 +133,7 @@ export default function ListingDetailScreen() {
         try {
             const res = await apiRequestDirect(
                 "POST",
-                `http://localhost:8002/user/listings/${id}/bid`,
+                `http://13.201.55.131:3002/user/listings/${id}/bid`,
                 { bid_amount: bidVal },
                 true,
             );
