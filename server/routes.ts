@@ -8,7 +8,7 @@ const RazorpaySDK = require("razorpay");
 
 // ── Razorpay client — created lazily so dotenv is already loaded ───────────────
 function getRazorpay() {
-  const key_id     = process.env.RAZORPAY_KEY_ID     || "";
+  const key_id = process.env.RAZORPAY_KEY_ID || "";
   const key_secret = process.env.RAZORPAY_KEY_SECRET || "";
   if (!key_id || !key_secret) {
     throw new Error("Razorpay keys not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in your .env file.");

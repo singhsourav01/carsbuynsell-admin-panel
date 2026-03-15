@@ -14,6 +14,7 @@ import { CountdownTimer } from "@/components/CountdownTimer";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { formatCurrency } from "@/utils/formatters";
 import { apiRequestDirect } from "@/lib/auth";
+import { fetchMySubscription } from "@/lib/subscription";
 
 function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: any | null; visible: boolean; onClose: () => void; onBidSuccess: (bid: number) => void }) {
   const [bidAmount, setBidAmount] = useState("");
@@ -33,7 +34,7 @@ function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: any | 
     lastBidTime.current = now;
     setLoading(true);
     try {
-      const res = await apiRequestDirect("POST", `http://13.201.55.131:3002/user/listings/${auction.lst_id}/bid`, { bidAmount: amount }, true);
+      const res = await apiRequestDirect("POST", `http://13.201.55.131:3002/user/listings/${auction.lst_id}/bid`, { bid_amount: amount }, true);
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
@@ -128,10 +129,27 @@ export default function LiveScreen() {
   const [checkingSub, setCheckingSub] = useState(false);
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
-  const handleBidNowPress = useCallback((auction: any) => {
+  const handleBidNowPress = useCallback(async (auction: any) => {
     setSelectedAuction(auction);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setSubVisible(true);
+    
+    // Check if user already has an active subscription
+    setCheckingSub(true);
+    try {
+      const sub = await fetchMySubscription();
+      if (sub) {
+        // User has active subscription — skip modal, go straight to bid
+        setBidVisible(true);
+      } else {
+        // No active subscription — show subscription modal
+        setSubVisible(true);
+      }
+    } catch {
+      // On error, show subscription modal as fallback
+      setSubVisible(true);
+    } finally {
+      setCheckingSub(false);
+    }
   }, []);
 
   // API data

@@ -20,6 +20,7 @@ import { formatCurrency } from "@/utils/formatters";
 import { CountdownTimer } from "@/components/CountdownTimer";
 import { apiRequestDirect, getToken } from "@/lib/auth";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
+import { fetchMySubscription } from "@/lib/subscription";
 
 const { width } = Dimensions.get("window");
 
@@ -41,36 +42,54 @@ export default function ListingDetailScreen() {
     const [isSubmittingBid, setIsSubmittingBid] = useState(false);
 
     const fetchListing = useCallback(async () => {
+        console.log("[DEBUG] fetchListing started for id:", id);
         setIsLoading(true);
         setError(null);
         try {
-            // Fetch listing details and bids concurrently
-            const [listingRes, bidsRes] = await Promise.all([
-                apiRequestDirect("GET", `http://13.201.55.131:3002/user/listings/${id}`),
-                apiRequestDirect("GET", `http://13.201.55.131:3002/user/listings/${id}/bids`)
-            ]);
+            console.log("[DEBUG] Fetching listing details...");
+            const listingRes = await apiRequestDirect("GET", `http://13.201.55.131:3002/user/listings/${id}`);
+            console.log("[DEBUG] Listing response status:", listingRes.status);
 
             const listingRaw = await listingRes.text();
+            console.log("[DEBUG] Listing raw data length:", listingRaw.length);
+
             let listingData: any = {};
-            try { listingData = JSON.parse(listingRaw); } catch { listingData = {}; }
+            try { listingData = JSON.parse(listingRaw); } catch (e) {
+                console.error("[DEBUG] JSON parse error for listing:", e);
+                listingData = {};
+            }
 
             if (listingRes.ok && listingData?.data) {
+                console.log("[DEBUG] Listing loaded successfully");
                 setListing(listingData.data);
+
+                // Fetch bids separately - don't block display
+                if (listingData.data.lst_type === "AUCTION") {
+                    console.log("[DEBUG] Fetching bids for auction...");
+                    try {
+                        const bidsRes = await apiRequestDirect("GET", `http://13.201.55.131:3002/user/listings/${id}/bids`);
+                        console.log("[DEBUG] Bids response status:", bidsRes.status);
+                        if (bidsRes.ok) {
+                            const bidsRaw = await bidsRes.text();
+                            let bidsData: any = {};
+                            try { bidsData = JSON.parse(bidsRaw); } catch { bidsData = {}; }
+                            if (bidsData?.data) {
+                                setBids(Array.isArray(bidsData.data) ? bidsData.data : []);
+                            }
+                        }
+                    } catch (bidErr) {
+                        console.error("[DEBUG] Non-critical error fetching bids:", bidErr);
+                    }
+                }
             } else {
+                console.error("[DEBUG] Listing response not OK or no data:", listingData?.message);
                 setError(listingData?.message || "Failed to load listing");
             }
-
-            if (listingData?.data?.lst_type === "AUCTION" && bidsRes.ok) {
-                const bidsRaw = await bidsRes.text();
-                let bidsData: any = {};
-                try { bidsData = JSON.parse(bidsRaw); } catch { bidsData = {}; }
-                if (bidsData?.data) {
-                    setBids(bidsData.data);
-                }
-            }
-        } catch {
+        } catch (err) {
+            console.error("[DEBUG] Critical error in fetchListing:", err);
             setError("Network error. Please check your connection.");
         } finally {
+            console.log("[DEBUG] Setting isLoading to false");
             setIsLoading(false);
         }
     }, [id]);
@@ -106,10 +125,31 @@ export default function ListingDetailScreen() {
         }
     }
 
-    function handleActionPress(action: "bid" | "buy") {
+    async function handleActionPress(action: "bid" | "buy") {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         setPendingAction(action);
-        setSubVisible(true);
+
+        // Check if user already has an active subscription
+        try {
+            const sub = await fetchMySubscription();
+            if (sub) {
+                // Has subscription — go directly to action
+                if (action === "buy") {
+                    handleBuyNow();
+                } else if (action === "bid") {
+                    const cp = isAuction ? Number(listing.lst_current_bid || listing.lst_price || 0) : 0;
+                    const mi = Number(listing.lst_min_increment || 1);
+                    setBidAmountStr(String(cp + mi));
+                    setBidModalVisible(true);
+                }
+                setPendingAction(null);
+            } else {
+                // No subscription — show modal
+                setSubVisible(true);
+            }
+        } catch {
+            setSubVisible(true);
+        }
     }
 
     async function handlePlaceBid() {
@@ -429,7 +469,7 @@ export default function ListingDetailScreen() {
                                     <Ionicons name="close" size={20} color={Colors.textSecondary} />
                                 </Pressable>
                             </View>
-                            
+
                             <Text style={s.bidModalSubtitle}>
                                 Current Bid: {formatCurrency(Number(listing?.lst_current_bid || listing?.lst_price || 0))}
                             </Text>
@@ -443,7 +483,7 @@ export default function ListingDetailScreen() {
                                     </Text>
                                 </View>
                             </View>
-                            
+
                             {/* Simple generic numeric keypad overlay for cross-platform visual consistency */}
                             <View style={s.keypadContainer}>
                                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, "C", 0, "⌫"].map((key) => (
@@ -462,7 +502,7 @@ export default function ListingDetailScreen() {
                                 ))}
                             </View>
 
-                            <Pressable 
+                            <Pressable
                                 style={({ pressed }) => [s.submitBidBtn, { opacity: (pressed || isSubmittingBid) ? 0.85 : 1 }]}
                                 onPress={handlePlaceBid}
                                 disabled={isSubmittingBid}

@@ -29,7 +29,8 @@ export interface SubscriptionPlan {
 export interface ActiveSubscription {
     sub_id: string;
     sub_status: string;
-    sub_remaining_uses: number;
+    sub_remaining_uses?: number;
+    remaining_uses?: number;
     sub_expires_at: string;
     sub_starts_at: string;
     plan: SubscriptionPlan;
@@ -59,11 +60,20 @@ export interface RazorpayPaymentResult {
  */
 export async function fetchMySubscription(): Promise<ActiveSubscription | null> {
     try {
-        const res = await apiRequestDirect("GET", `${SUB_BASE}${SUB_PATH}/me`, undefined, true);
+        const url = `${SUB_BASE}${SUB_PATH}/me`;
+        console.log("[DEBUG-SUB] Fetching my subscription from:", url);
+        const res = await apiRequestDirect("GET", url, undefined, true);
+        console.log("[DEBUG-SUB] /me response status:", res.status);
+
+        const rawText = await res.text();
+        console.log("[DEBUG-SUB] /me raw response:", rawText);
+
         if (!res.ok) return null; // 404 = no active sub, 401 = unauth — both return null
-        const data = JSON.parse(await res.text());
+        const data = JSON.parse(rawText);
+        console.log("[DEBUG-SUB] /me parsed data:", JSON.stringify(data?.data));
         return data?.data ?? null;
-    } catch {
+    } catch (e) {
+        console.error("[DEBUG-SUB] fetchMySubscription error:", e);
         return null;
     }
 }
@@ -136,13 +146,13 @@ export async function openRazorpayCheckout(
     const redirectUrl = Linking.createURL("payment-callback");
 
     const params = new URLSearchParams({
-        order_id:        order.razorpay_order_id,
-        amount:          String(order.amount),
-        currency:        order.currency || "INR",
-        key_id:          order.key_id,
-        name:            userName,
-        email:           userEmail,
-        redirect_url:    redirectUrl,
+        order_id: order.razorpay_order_id,
+        amount: String(order.amount),
+        currency: order.currency || "INR",
+        key_id: order.key_id,
+        name: userName,
+        email: userEmail,
+        redirect_url: redirectUrl,
     });
 
     const checkoutUrl = `${LOCAL_SERVER}/razorpay-checkout?${params.toString()}`;
@@ -173,8 +183,8 @@ export async function openRazorpayCheckout(
 
     if (status === "success") {
         const paymentId = q.razorpay_payment_id as string;
-        const orderId   = q.razorpay_order_id   as string;
-        const signature = q.razorpay_signature  as string;
+        const orderId = q.razorpay_order_id as string;
+        const signature = q.razorpay_signature as string;
         if (!paymentId || !orderId || !signature) {
             throw new Error("Payment succeeded but response is incomplete. Contact support.");
         }
@@ -182,8 +192,8 @@ export async function openRazorpayCheckout(
     }
 
     if (status === "failed") {
-        const desc   = q.error_description as string || "Payment failed";
-        const reason = q.error_reason      as string || "";
+        const desc = q.error_description as string || "Payment failed";
+        const reason = q.error_reason as string || "";
         throw new Error(`${desc}${reason ? ` (${reason})` : ""}`);
     }
 

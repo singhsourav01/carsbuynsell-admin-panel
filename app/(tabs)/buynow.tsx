@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, memo } from "react";
 import {
   View, Text, FlatList, Pressable, StyleSheet,
-  ActivityIndicator, RefreshControl, TextInput,
+  ActivityIndicator, RefreshControl, TextInput, Alert,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -13,6 +13,7 @@ import { Colors } from "@/constants/colors";
 import { formatCurrency } from "@/utils/formatters";
 import { apiRequestDirect } from "@/lib/auth";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
+import { fetchMySubscription } from "@/lib/subscription";
 
 const VCard = memo(function VCard({ item, onBuyNow }: { item: any; onBuyNow: () => void }) {
   const imageUri = item.images?.[0]?.url || item.images?.[0]?.file_url;
@@ -56,12 +57,60 @@ export default function BuyNowScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [subVisible, setSubVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [buyingItem, setBuyingItem] = useState<string | null>(null);
 
-  const handleBuyNowPress = useCallback((item: any) => {
+  const executeBuyNow = useCallback(async (item: any) => {
+    setBuyingItem(item.lst_id);
+    try {
+      const res = await apiRequestDirect(
+        "POST",
+        `http://13.201.55.131:3002/user/listings/${item.lst_id}/buy`,
+        {},
+        true,
+      );
+      const rawText = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(rawText); } catch { data = {}; }
+      if (res.ok) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("Purchase Successful!", data?.message || "You have successfully purchased this vehicle.");
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert("Purchase Failed", data?.message || "Something went wrong. Please try again.");
+      }
+    } catch {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Network Error", "Please check your connection and try again.");
+    } finally {
+      setBuyingItem(null);
+    }
+  }, []);
+
+  const handleBuyNowPress = useCallback(async (item: any) => {
     setSelectedItem(item);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setSubVisible(true);
-  }, []);
+    
+    // Check if user already has an active subscription
+    try {
+      const sub = await fetchMySubscription();
+      if (sub) {
+        // Has subscription — confirm and buy directly
+        Alert.alert(
+          "Confirm Purchase",
+          `Are you sure you want to buy "${item.lst_title}" for ${formatCurrency(item.lst_price)}?`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Buy Now", style: "default", onPress: () => executeBuyNow(item) },
+          ]
+        );
+      } else {
+        // No subscription — show modal
+        setSubVisible(true);
+      }
+    } catch {
+      setSubVisible(true);
+    }
+  }, [executeBuyNow]);
 
   const fetchListings = useCallback(async (isRefresh = false) => {
     if (isRefresh) setIsRefreshing(true);
@@ -131,7 +180,20 @@ export default function BuyNowScreen() {
       <SubscriptionModal
         visible={subVisible}
         onClose={() => setSubVisible(false)}
-        onSuccess={() => { setSubVisible(false); if (selectedItem) router.push(`/listing/${selectedItem.lst_id}` as any); }}
+        onSuccess={() => {
+          setSubVisible(false);
+          if (selectedItem) {
+            // After subscribing, confirm and buy
+            Alert.alert(
+              "Confirm Purchase",
+              `Are you sure you want to buy "${selectedItem.lst_title}" for ${formatCurrency(selectedItem.lst_price)}?`,
+              [
+                { text: "Cancel", style: "cancel" },
+                { text: "Buy Now", style: "default", onPress: () => executeBuyNow(selectedItem) },
+              ]
+            );
+          }
+        }}
       />
     </View>
   );

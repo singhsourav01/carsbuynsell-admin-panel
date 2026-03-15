@@ -11,11 +11,13 @@ import {
   fetchMySubscription,
   fetchPlans,
   createSubscriptionOrder,
-  openRazorpayCheckout,
   verifySubscriptionPayment,
   ActiveSubscription,
   SubscriptionPlan,
+  CreateOrderResult,
+  RazorpayPaymentResult,
 } from "@/lib/subscription";
+import { RazorpayCheckoutModal } from "./RazorpayCheckoutModal";
 
 interface SubscriptionModalProps {
   visible: boolean;
@@ -29,6 +31,7 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [subChecked, setSubChecked] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
+  const [checkoutOrder, setCheckoutOrder] = useState<CreateOrderResult | null>(null);
 
   const loadData = useCallback(async () => {
     setSubChecked(false);
@@ -54,8 +57,16 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
     }
   }, [visible, loadData]);
 
-  const hasActiveSub = subChecked && !!activeSub && activeSub.sub_remaining_uses > 0;
-  
+  const hasActiveSub = subChecked && !!activeSub;
+
+  // Auto-continue: if the user already has an active subscription,
+  // skip the modal entirely and fire onSuccess immediately
+  useEffect(() => {
+    if (visible && hasActiveSub) {
+      onSuccess();
+    }
+  }, [visible, hasActiveSub]);
+
   // Use the first available plan, or a fallback if none loaded
   const defaultPlan = plans.length > 0 ? plans[0] : {
     sp_id: "",
@@ -84,94 +95,182 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
     setSubscribing(true);
     try {
       console.log("[SUB] Starting subscription flow for plan:", plan_id);
-
-      // Step 1: Create Razorpay order on backend
       const order = await createSubscriptionOrder(plan_id);
-      console.log("[SUB] Order created:", order.razorpay_order_id);
+      console.log("[SUB] Order created:", JSON.stringify(order));
 
-      // Step 2: Open Razorpay checkout in the system browser
-      const paymentResult = await openRazorpayCheckout(order);
-      console.log("[SUB] Payment completed:", paymentResult.razorpay_payment_id);
+      // Validate order has all required fields before opening checkout
+      if (!order.razorpay_order_id || !order.key_id || !order.amount) {
+        throw new Error(
+          "Incomplete order data from server. " +
+          `Missing: ${!order.razorpay_order_id ? 'order_id ' : ''}${!order.key_id ? 'key_id ' : ''}${!order.amount ? 'amount' : ''}`
+        );
+      }
 
-      // Step 3: Verify the payment signature with backend
-      await verifySubscriptionPayment(
-        paymentResult.razorpay_order_id,
-        paymentResult.razorpay_payment_id,
-        paymentResult.razorpay_signature,
-      );
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onSuccess();
+      setCheckoutOrder(order);
     } catch (err: any) {
+      console.error("[SUB] Order creation failed:", err);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      const message = err?.message || "Could not complete payment. Please try again.";
+      const message = err?.error?.description || err?.description || err?.message || "Could not complete payment. Please try again.";
       if (!message.toLowerCase().includes("cancel")) {
-        Alert.alert("Payment Failed", message);
+        Alert.alert("Error Creating Order", message);
       }
       setSubscribing(false);
     }
   };
 
+
+  const handlePaymentSuccess = async (data: RazorpayPaymentResult) => {
+    console.log("[SUB] Payment success from Razorpay:", data.razorpay_payment_id);
+    try {
+      if (!checkoutOrder) {
+        console.error("[SUB] No order found in state during success callback");
+        return;
+      }
+
+      console.log("[SUB] Verifying payment for order:", data.razorpay_order_id || checkoutOrder.razorpay_order_id);
+      await verifySubscriptionPayment(
+        data.razorpay_order_id || checkoutOrder.razorpay_order_id,
+        data.razorpay_payment_id,
+        data.razorpay_signature
+      );
+
+      console.log("[SUB] Verification successful");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setCheckoutOrder(null);
+      setSubscribing(false);
+      onSuccess();
+    } catch (err: any) {
+      console.error("[SUB] Verification error:", err);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const message = err?.message || "Verification failed on server. Please contact support.";
+      Alert.alert("Payment Failed", message);
+      setCheckoutOrder(null);
+      setSubscribing(false);
+    }
+  };
+
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.sheet}>
-          <View style={styles.grabber} />
+    <>
+      <Modal visible={visible && !checkoutOrder} animationType="slide" transparent onRequestClose={onClose}>
+        <View style={styles.overlay}>
+          <View style={styles.sheet}>
+            <View style={styles.grabber} />
 
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.title}>Unlock Vehicle Actions</Text>
-              <Text style={styles.subtitle}>
+            {/* Header */}
+            <View style={styles.header}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.title}>Unlock Vehicle Actions</Text>
+                <Text style={styles.subtitle}>
                 {subChecked && hasActiveSub
-                  ? `${activeSub!.sub_remaining_uses} of ${DISPLAY_USES} transactions remaining`
+                  ? `${activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 'Active'} transactions remaining`
                   : "One subscription · 3 transactions"}
-              </Text>
+                </Text>
+              </View>
+              <Pressable onPress={onClose} style={styles.closeBtn}>
+                <Ionicons name="close" size={20} color={Colors.textSecondary} />
+              </Pressable>
             </View>
-            <Pressable onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={20} color={Colors.textSecondary} />
-            </Pressable>
-          </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
-            {!subChecked ? (
-               <View style={{ padding: 40, alignItems: "center" }}>
-                 <ActivityIndicator size="large" color={Colors.primary} />
-                 <Text style={{ marginTop: 10, color: Colors.textSecondary }}>Checking subscription...</Text>
-               </View>
-            ) : hasActiveSub ? (
-              <View>
-                <View style={styles.activeCard}>
-                  <LinearGradient
-                    colors={[Colors.heroLight, Colors.hero]}
-                    style={styles.activeGrad}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    <View style={styles.activeIconWrap}>
-                      <Ionicons name="checkmark-circle" size={40} color="#fff" />
-                    </View>
-                    <Text style={styles.activeTitle}>Subscription Active</Text>
-                    <Text style={styles.activePlan}>{activeSub?.plan?.sp_name ?? "Standard Plan"}</Text>
-                    <View style={styles.usesRow}>
-                      {[1, 2, 3].map((n) => (
-                        <View
-                          key={n}
-                          style={[
-                            styles.usesDot,
-                            n <= activeSub!.sub_remaining_uses ? styles.usesDotActive : styles.usesDotUsed,
-                          ]}
-                        />
-                      ))}
-                    </View>
-                    <Text style={styles.usesLabel}>
-                      {activeSub!.sub_remaining_uses} of {DISPLAY_USES} transactions left
-                    </Text>
-                  </LinearGradient>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
+              {!subChecked ? (
+                <View style={{ padding: 40, alignItems: "center" }}>
+                  <ActivityIndicator size="large" color={Colors.primary} />
+                  <Text style={{ marginTop: 10, color: Colors.textSecondary }}>Checking subscription...</Text>
                 </View>
+              ) : hasActiveSub ? (
+                <View>
+                  <View style={styles.activeCard}>
+                    <LinearGradient
+                      colors={[Colors.heroLight, Colors.hero]}
+                      style={styles.activeGrad}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    >
+                      <View style={styles.activeIconWrap}>
+                        <Ionicons name="checkmark-circle" size={40} color="#fff" />
+                      </View>
+                      <Text style={styles.activeTitle}>Subscription Active</Text>
+                      <Text style={styles.activePlan}>{activeSub?.plan?.sp_name ?? "Standard Plan"}</Text>
+                      <View style={styles.usesRow}>
+                        {[1, 2, 3].map((n) => (
+                          <View
+                            key={n}
+                            style={[
+                              styles.usesDot,
+                            n <= (activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 3) ? styles.usesDotActive : styles.usesDotUsed,
+                          ]}
+                          />
+                        ))}
+                      </View>
+                      <Text style={styles.usesLabel}>
+                        {activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 'Active'} transactions left
+                      </Text>
+                    </LinearGradient>
+                  </View>
+                  <Pressable
+                    style={({ pressed }) => [styles.subBtn, { opacity: pressed ? 0.85 : 1 }]}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onSuccess(); }}
+                  >
+                    <LinearGradient
+                      colors={[Colors.heroLight, Colors.hero]}
+                      style={styles.subBtnGrad}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 0 }}
+                    >
+                      <Ionicons name="flash" size={16} color="#fff" />
+                      <Text style={styles.subBtnText}>Continue</Text>
+                    </LinearGradient>
+                  </Pressable>
+                </View>
+              ) : (
+                <View>
+                  <View style={styles.planCard}>
+                    <View style={styles.planBadge}>
+                      <Ionicons name="star" size={10} color="#fff" />
+                      <Text style={styles.planBadgeText}>SUBSCRIPTION</Text>
+                    </View>
+                    <Text style={styles.planName}>{defaultPlan.sp_name}</Text>
+                    <Text style={styles.planDesc}>
+                      {defaultPlan.sp_description || `Subscribe once to bid or buy up to ${DISPLAY_USES} vehicles`}
+                    </Text>
+                    <View style={styles.priceRow}>
+                      <Text style={styles.priceCur}>₹</Text>
+                      <Text style={styles.priceVal}>{defaultPlan.sp_price ? defaultPlan.sp_price.toLocaleString("en-IN") : "..."}</Text>
+                      <Text style={styles.priceNote}> one-time</Text>
+                    </View>
+                    <View style={styles.divider} />
+                    {[
+                      { icon: "flash", text: `${DISPLAY_USES} vehicle transactions (bid or buy)` },
+                      { icon: "shield-checkmark", text: "Secure Razorpay payment" },
+                      { icon: "time", text: "Valid until all transactions are used" },
+                      { icon: "car-sport", text: "Access all live auctions & buy now listings" },
+                    ].map(({ icon, text }) => (
+                      <View key={text} style={styles.featureRow}>
+                        <View style={styles.featureIcon}>
+                          <Ionicons name={icon as any} size={14} color={Colors.primary} />
+                        </View>
+                        <Text style={styles.featureText}>{text}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  <View style={styles.infoBox}>
+                    <Ionicons name="information-circle-outline" size={14} color={Colors.info} />
+                    <Text style={styles.infoText}>
+                      Each successful bid or purchase deducts one transaction. Subscription expires after {DISPLAY_USES} completed transactions.
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Footer — only show Subscribe when user doesn't have active sub and check is complete */}
+            {subChecked && !hasActiveSub && (
+              <View style={styles.footer}>
                 <Pressable
-                  style={({ pressed }) => [styles.subBtn, { opacity: pressed ? 0.85 : 1 }]}
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onSuccess(); }}
+                  style={({ pressed }) => [styles.subBtn, { opacity: (pressed || subscribing) ? 0.85 : 1 }]}
+                  onPress={handleSubscribe}
+                  disabled={subscribing || !defaultPlan.sp_id}
                 >
                   <LinearGradient
                     colors={[Colors.heroLight, Colors.hero]}
@@ -179,88 +278,40 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                   >
-                    <Ionicons name="flash" size={16} color="#fff" />
-                    <Text style={styles.subBtnText}>Continue</Text>
+                    {subscribing ? (
+                      <>
+                        <ActivityIndicator color="#fff" size="small" />
+                        <Text style={styles.subBtnText}>Opening Payment…</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Ionicons name="lock-open" size={16} color="#fff" />
+                        <Text style={styles.subBtnText}>
+                          Subscribe — ₹{defaultPlan.sp_price ? defaultPlan.sp_price.toLocaleString("en-IN") : "..."}
+                        </Text>
+                      </>
+                    )}
                   </LinearGradient>
                 </Pressable>
-              </View>
-            ) : (
-              <View>
-                <View style={styles.planCard}>
-                  <View style={styles.planBadge}>
-                    <Ionicons name="star" size={10} color="#fff" />
-                    <Text style={styles.planBadgeText}>SUBSCRIPTION</Text>
-                  </View>
-                  <Text style={styles.planName}>{defaultPlan.sp_name}</Text>
-                  <Text style={styles.planDesc}>
-                    {defaultPlan.sp_description || `Subscribe once to bid or buy up to ${DISPLAY_USES} vehicles`}
-                  </Text>
-                  <View style={styles.priceRow}>
-                    <Text style={styles.priceCur}>₹</Text>
-                    <Text style={styles.priceVal}>{defaultPlan.sp_price ? defaultPlan.sp_price.toLocaleString("en-IN") : "..."}</Text>
-                    <Text style={styles.priceNote}> one-time</Text>
-                  </View>
-                  <View style={styles.divider} />
-                  {[
-                    { icon: "flash", text: `${DISPLAY_USES} vehicle transactions (bid or buy)` },
-                    { icon: "shield-checkmark", text: "Secure Razorpay payment" },
-                    { icon: "time", text: "Valid until all transactions are used" },
-                    { icon: "car-sport", text: "Access all live auctions & buy now listings" },
-                  ].map(({ icon, text }) => (
-                    <View key={text} style={styles.featureRow}>
-                      <View style={styles.featureIcon}>
-                        <Ionicons name={icon as any} size={14} color={Colors.primary} />
-                      </View>
-                      <Text style={styles.featureText}>{text}</Text>
-                    </View>
-                  ))}
-                </View>
-
-                <View style={styles.infoBox}>
-                  <Ionicons name="information-circle-outline" size={14} color={Colors.info} />
-                  <Text style={styles.infoText}>
-                    Each successful bid or purchase deducts one transaction. Subscription expires after {DISPLAY_USES} completed transactions.
-                  </Text>
-                </View>
+                <Text style={styles.secureText}>🔒 Secure payment via Razorpay</Text>
               </View>
             )}
-          </ScrollView>
-
-          {/* Footer — only show Subscribe when user doesn't have active sub and check is complete */}
-          {subChecked && !hasActiveSub && (
-            <View style={styles.footer}>
-              <Pressable
-                style={({ pressed }) => [styles.subBtn, { opacity: (pressed || subscribing) ? 0.85 : 1 }]}
-                onPress={handleSubscribe}
-                disabled={subscribing || !defaultPlan.sp_id}
-              >
-                <LinearGradient
-                  colors={[Colors.heroLight, Colors.hero]}
-                  style={styles.subBtnGrad}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                >
-                  {subscribing ? (
-                    <>
-                      <ActivityIndicator color="#fff" size="small" />
-                      <Text style={styles.subBtnText}>Opening Payment…</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Ionicons name="lock-open" size={16} color="#fff" />
-                      <Text style={styles.subBtnText}>
-                        Subscribe — ₹{defaultPlan.sp_price ? defaultPlan.sp_price.toLocaleString("en-IN") : "..."}
-                      </Text>
-                    </>
-                  )}
-                </LinearGradient>
-              </Pressable>
-              <Text style={styles.secureText}>🔒 Secure payment via Razorpay</Text>
-            </View>
-          )}
+          </View>
         </View>
-      </View>
-    </Modal>
+      </Modal>
+      <RazorpayCheckoutModal
+        visible={!!checkoutOrder}
+        order={checkoutOrder}
+        onSuccess={handlePaymentSuccess}
+        onClose={(errorMsg?: string) => {
+          setCheckoutOrder(null);
+          setSubscribing(false);
+          if (errorMsg && !errorMsg.toLowerCase().includes("cancel")) {
+            Alert.alert("Payment Failed", errorMsg);
+          }
+        }}
+      />
+    </>
   );
 }
 
