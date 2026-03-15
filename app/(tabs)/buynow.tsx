@@ -89,27 +89,36 @@ export default function BuyNowScreen() {
   const handleBuyNowPress = useCallback(async (item: any) => {
     setSelectedItem(item);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    // Check if user already has an active subscription
+
     try {
       const sub = await fetchMySubscription();
-      if (sub) {
-        // Has subscription — confirm and buy directly
+      console.log("[DEBUG-SUB] buynow.tsx Subscription:", sub);
+
+      const remainingUses =
+        sub?.sub_remaining_uses ??
+        sub?.remaining_uses ??
+        0;
+      
+      console.log("[DEBUG-SUB] buynow.tsx remainingUses:", remainingUses);
+
+      if (sub && remainingUses > 0) {
         Alert.alert(
           "Confirm Purchase",
           `Are you sure you want to buy "${item.lst_title}" for ${formatCurrency(item.lst_price)}?`,
           [
             { text: "Cancel", style: "cancel" },
-            { text: "Buy Now", style: "default", onPress: () => executeBuyNow(item) },
+            { text: "Buy Now", onPress: () => executeBuyNow(item) },
           ]
         );
       } else {
-        // No subscription — show modal
         setSubVisible(true);
       }
-    } catch {
+
+    } catch (err) {
+      console.error("[DEBUG-SUB] buynow.tsx check error:", err);
       setSubVisible(true);
     }
+
   }, [executeBuyNow]);
 
   const fetchListings = useCallback(async (isRefresh = false) => {

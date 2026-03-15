@@ -61,11 +61,10 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
 
   // Auto-continue: if the user already has an active subscription,
   // skip the modal entirely and fire onSuccess immediately
-  useEffect(() => {
-    if (visible && hasActiveSub) {
-      onSuccess();
-    }
-  }, [visible, hasActiveSub]);
+  if (visible && hasActiveSub) {
+    onSuccess()
+    return null
+  }
 
   // Use the first available plan, or a fallback if none loaded
   const defaultPlan = plans.length > 0 ? plans[0] : {
@@ -161,9 +160,9 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
               <View style={{ flex: 1 }}>
                 <Text style={styles.title}>Unlock Vehicle Actions</Text>
                 <Text style={styles.subtitle}>
-                {subChecked && hasActiveSub
-                  ? `${activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 'Active'} transactions remaining`
-                  : "One subscription · 3 transactions"}
+                  {subChecked && hasActiveSub
+                    ? `${activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 'Active'} transactions remaining`
+                    : "One subscription · 3 transactions"}
                 </Text>
               </View>
               <Pressable onPress={onClose} style={styles.closeBtn}>
@@ -197,8 +196,8 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
                             key={n}
                             style={[
                               styles.usesDot,
-                            n <= (activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 3) ? styles.usesDotActive : styles.usesDotUsed,
-                          ]}
+                              n <= (activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 3) ? styles.usesDotActive : styles.usesDotUsed,
+                            ]}
                           />
                         ))}
                       </View>
@@ -265,7 +264,7 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
             </ScrollView>
 
             {/* Footer — only show Subscribe when user doesn't have active sub and check is complete */}
-            {subChecked && !hasActiveSub && (
+            {subChecked && !activeSub && (
               <View style={styles.footer}>
                 <Pressable
                   style={({ pressed }) => [styles.subBtn, { opacity: (pressed || subscribing) ? 0.85 : 1 }]}

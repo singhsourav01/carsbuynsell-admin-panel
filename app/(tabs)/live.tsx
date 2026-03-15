@@ -130,22 +130,30 @@ export default function LiveScreen() {
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
   const handleBidNowPress = useCallback(async (auction: any) => {
+    console.log("handleBidNowPress", auction);
     setSelectedAuction(auction);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
+
     // Check if user already has an active subscription
     setCheckingSub(true);
     try {
       const sub = await fetchMySubscription();
-      if (sub) {
-        // User has active subscription — skip modal, go straight to bid
+      console.log("[DEBUG-SUB] live.tsx Subscription:", sub);
+      
+      const remainingUses =
+        sub?.sub_remaining_uses ??
+        sub?.remaining_uses ??
+        0;
+      
+      console.log("[DEBUG-SUB] live.tsx remainingUses:", remainingUses);
+      
+      if (sub && remainingUses > 0) {
         setBidVisible(true);
       } else {
-        // No active subscription — show subscription modal
         setSubVisible(true);
       }
-    } catch {
-      // On error, show subscription modal as fallback
+    } catch (err) {
+      console.error("[DEBUG-SUB] live.tsx check error:", err);
       setSubVisible(true);
     } finally {
       setCheckingSub(false);
