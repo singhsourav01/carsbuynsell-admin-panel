@@ -25,8 +25,9 @@ import { fetchMySubscription } from "@/lib/subscription";
 const { width } = Dimensions.get("window");
 
 export default function ListingDetailScreen() {
-    const { id } = useLocalSearchParams<{ id: string }>();
+    const { id, viewOnly } = useLocalSearchParams<{ id: string; viewOnly?: string }>();
     const insets = useSafeAreaInsets();
+    const isViewOnly = viewOnly === "true";
 
     const [listing, setListing] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -67,15 +68,18 @@ export default function ListingDetailScreen() {
                 if (listingData.data.lst_type === "AUCTION") {
                     console.log("[DEBUG] Fetching bids for auction...");
                     try {
-                        const bidsRes = await apiRequestDirect("GET", `http://13.127.188.130:3002/user/listings/${id}/bids`);
+                        const bidsRes = await apiRequestDirect("GET", `http://13.127.188.130:3002/user/listings/${id}/bids`, undefined, true);
                         console.log("[DEBUG] Bids response status:", bidsRes.status);
                         if (bidsRes.ok) {
                             const bidsRaw = await bidsRes.text();
+                            console.log("[DEBUG] Bids raw response:", bidsRaw);
                             let bidsData: any = {};
                             try { bidsData = JSON.parse(bidsRaw); } catch { bidsData = {}; }
-                            if (bidsData?.data) {
-                                setBids(Array.isArray(bidsData.data) ? bidsData.data : []);
-                            }
+                            console.log("[DEBUG] Bids parsed data:", JSON.stringify(bidsData));
+                            // Handle different possible response structures
+                            const bidsArray = bidsData?.data?.bids || bidsData?.data || bidsData?.bids || [];
+                            setBids(Array.isArray(bidsArray) ? bidsArray : []);
+                            console.log("[DEBUG] Bids set:", Array.isArray(bidsArray) ? bidsArray.length : 0, "items");
                         }
                     } catch (bidErr) {
                         console.error("[DEBUG] Non-critical error fetching bids:", bidErr);
@@ -242,7 +246,7 @@ export default function ListingDetailScreen() {
 
     return (
         <View style={s.container}>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: isViewOnly ? 40 : 120 }}>
                 {/* Image Section */}
                 <View style={s.imageSection}>
                     {hasImages ? (
@@ -386,57 +390,70 @@ export default function ListingDetailScreen() {
                     )}
                 </View>
                 {/* Bid History */}
-                {isAuction && bids.length > 0 && (
+                {isAuction && (
                     <View style={s.bidsCard}>
                         <Text style={s.sectionTitle}>Bid History</Text>
-                        <View style={s.bidsList}>
-                            {bids.map((bid: any, idx) => (
-                                <View key={bid.bid_id || idx} style={s.bidItem}>
-                                    <View style={s.bidderInfo}>
-                                        <View style={s.bidderAvatar}>
-                                            <Ionicons name="person" size={16} color={Colors.primary} />
+                        {bids.length > 0 ? (
+                            <View style={s.bidsList}>
+                                {bids.map((bid: any, idx) => (
+                                    <View key={bid.bid_id || bid.id || idx} style={s.bidItem}>
+                                        <View style={s.bidderInfo}>
+                                            <View style={s.bidderAvatar}>
+                                                <Ionicons name="person" size={16} color={Colors.primary} />
+                                            </View>
+                                            <View>
+                                                <Text style={s.bidderName}>{bid.bidder?.user_full_name || bid.user?.user_full_name || "Bidder"}</Text>
+                                                <Text style={s.bidTime}>
+                                                    {new Date(bid.bid_created_at || bid.bid_time || bid.created_at).toLocaleString("en-IN", {
+                                                        day: "numeric",
+                                                        month: "short",
+                                                        hour: "2-digit",
+                                                        minute: "2-digit",
+                                                        hour12: true,
+                                                    })}
+                                                </Text>
+                                            </View>
                                         </View>
-                                        <View>
-                                            <Text style={s.bidderName}>{bid.user?.user_full_name || "Unknown Bidder"}</Text>
-                                            <Text style={s.bidTime}>
-                                                {new Date(bid.bid_time || bid.created_at || new Date()).toLocaleString("en-IN", {
-                                                    dateStyle: "short",
-                                                    timeStyle: "short"
-                                                })}
-                                            </Text>
-                                        </View>
+                                        <Text style={s.bidAmount}>{formatCurrency(Number(bid.bid_amount || bid.amount || 0))}</Text>
                                     </View>
-                                    <Text style={s.bidAmount}>{formatCurrency(Number(bid.bid_amount || 0))}</Text>
-                                </View>
-                            ))}
-                        </View>
+                                ))}
+                            </View>
+                        ) : (
+                            <View style={s.emptyBids}>
+                                <Ionicons name="flash-outline" size={32} color={Colors.textMuted} />
+                                <Text style={s.emptyBidsTitle}>No Bids Yet</Text>
+                                <Text style={s.emptyBidsText}>Be the first to place a bid on this vehicle!</Text>
+                            </View>
+                        )}
                     </View>
                 )}
             </ScrollView>
 
-            {/* Bottom Action Bar */}
-            <View style={[s.bottomBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-                <View style={s.bottomPrice}>
-                    <Text style={s.bottomPriceLabel}>{isAuction ? "Current Bid" : "Price"}</Text>
-                    <Text style={s.bottomPriceValue}>{formatCurrency(currentPrice)}</Text>
-                </View>
-                <Pressable
-                    style={({ pressed }) => [s.actionBtn, { opacity: pressed ? 0.85 : 1 }]}
-                    onPress={() => handleActionPress(isAuction ? "bid" : "buy")}
-                >
-                    <LinearGradient
-                        colors={isAuction ? ["#FF6B6B", Colors.danger] : [Colors.heroLight, Colors.hero]}
-                        style={s.actionBtnGrad}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 0 }}
+            {/* Bottom Action Bar - hidden in view-only mode */}
+            {!isViewOnly && (
+                <View style={[s.bottomBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+                    <View style={s.bottomPrice}>
+                        <Text style={s.bottomPriceLabel}>{isAuction ? "Current Bid" : "Price"}</Text>
+                        <Text style={s.bottomPriceValue}>{formatCurrency(currentPrice)}</Text>
+                    </View>
+                    <Pressable
+                        style={({ pressed }) => [s.actionBtn, { opacity: pressed ? 0.85 : 1 }]}
+                        onPress={() => handleActionPress(isAuction ? "bid" : "buy")}
                     >
-                        <Ionicons name={isAuction ? "flash" : "pricetag"} size={18} color="#fff" />
-                        <Text style={s.actionBtnText}>
-                            {isAuction ? "Place Bid" : `Buy Now · ${formatCurrency(currentPrice)}`}
-                        </Text>
-                    </LinearGradient>
-                </Pressable>
-            </View>
+                        <LinearGradient
+                            colors={isAuction ? ["#FF6B6B", Colors.danger] : [Colors.heroLight, Colors.hero]}
+                            style={s.actionBtnGrad}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                        >
+                            <Ionicons name={isAuction ? "flash" : "pricetag"} size={18} color="#fff" />
+                            <Text style={s.actionBtnText}>
+                                {isAuction ? "Place Bid" : `Buy Now · ${formatCurrency(currentPrice)}`}
+                            </Text>
+                        </LinearGradient>
+                    </Pressable>
+                </View>
+            )}
 
             <SubscriptionModal
                 visible={subVisible}
@@ -613,9 +630,9 @@ const s = StyleSheet.create({
         backgroundColor: Colors.card, borderRadius: 16, padding: 18, gap: 14,
         borderWidth: 1, borderColor: Colors.cardBorder,
     },
-    specsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    specsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 5, justifyContent: "space-around" },
     specItem: {
-        width: (width - 32 - 36 - 10) / 3,
+        width: (width - 32 - 36 - 20) / 3,
         backgroundColor: Colors.surface, borderRadius: 14, padding: 12, alignItems: "center", gap: 6,
     },
     specIconWrap: {
@@ -633,7 +650,7 @@ const s = StyleSheet.create({
     },
     infoLabel: { fontSize: 11, fontFamily: "Urbanist_400Regular", color: Colors.textMuted },
     infoValue: { fontSize: 13, color: Colors.textMuted, marginTop: 4, fontFamily: "Inter-Medium" },
-    bidsCard: { paddingHorizontal: 20, marginTop: 16, marginBottom: 20 },
+    bidsCard: { paddingHorizontal: 16, marginBottom: 20, gap: 12 },
     bidsList: {
         backgroundColor: Colors.card,
         borderRadius: 16,
@@ -659,6 +676,17 @@ const s = StyleSheet.create({
     bidderName: { color: Colors.text, fontSize: 14, fontFamily: "Urbanist_600SemiBold" },
     bidTime: { color: Colors.textMuted, fontSize: 12, marginTop: 2, fontFamily: "Urbanist_400Regular" },
     bidAmount: { color: Colors.success, fontSize: 15, fontFamily: "Urbanist_700Bold" },
+    emptyBids: {
+        backgroundColor: Colors.card,
+        borderRadius: 16,
+        padding: 24,
+        borderWidth: 1,
+        borderColor: Colors.cardBorder,
+        alignItems: "center",
+        gap: 8,
+    },
+    emptyBidsTitle: { fontSize: 16, fontFamily: "Urbanist_700Bold", color: Colors.text },
+    emptyBidsText: { fontSize: 13, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary, textAlign: "center" },
 
     // Bottom Bar
     bottomBar: {

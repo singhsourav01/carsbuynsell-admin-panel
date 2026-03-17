@@ -39,7 +39,7 @@ function FeaturedCard({ item, isActive }: { item: any; isActive: boolean }) {
   return (
     <Pressable
       onPress={() => { router.push(`/listing/${item.lst_id}` as any); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-      style={[styles.featuredCard, { width: width - 48 }]}
+      style={[styles.featuredCard, { width: width - 48, marginRight: 16 }]}
     >
       {imageUri ? (
         <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
@@ -108,6 +108,7 @@ export default function HomeScreen() {
   const [activeCategory, setActiveCategory] = useState("all");
   const [featuredIdx, setFeaturedIdx] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
 
   // API data
   const [featured, setFeatured] = useState<any[]>([]);
@@ -168,19 +169,21 @@ export default function HomeScreen() {
         <View style={styles.heroBanner}>
           <Text style={styles.heroTitle}>Find your next big profit.</Text>
           <Text style={styles.heroSubtitle}>Browse verified dealer-exclusive listings.</Text>
-          <View style={styles.heroSearch}>
-            <Ionicons name="search-outline" size={18} color="rgba(255,255,255,0.5)" />
+          <View style={[styles.heroSearch, searchFocused && styles.heroSearchFocused]}>
+            <Ionicons name="search-outline" size={18} color={searchFocused ? Colors.primary : "rgba(255,255,255,0.5)"} />
             <TextInput
-              style={styles.heroSearchInput}
+              style={[styles.heroSearchInput, searchFocused && styles.heroSearchInputFocused]}
               placeholder="Search make, model..."
-              placeholderTextColor="rgba(255,255,255,0.5)"
+              placeholderTextColor={searchFocused ? Colors.textMuted : "rgba(255,255,255,0.5)"}
               value={searchQuery}
               onChangeText={setSearchQuery}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
               returnKeyType="search"
             />
             {searchQuery.length > 0 && (
               <Pressable onPress={() => setSearchQuery("")}>
-                <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.6)" />
+                <Ionicons name="close-circle" size={18} color={searchFocused ? Colors.textMuted : "rgba(255,255,255,0.6)"} />
               </Pressable>
             )}
           </View>
@@ -218,7 +221,7 @@ export default function HomeScreen() {
           ) : featured.length === 0 ? (
             <View style={[styles.featuredCard, { width: width - 48, justifyContent: "center", alignItems: "center", backgroundColor: Colors.card }]}>
               <Ionicons name="star-outline" size={32} color={Colors.textMuted} />
-              <Text style={{ fontSize: 14, fontFamily: "Urbanist_500Medium", color: Colors.textMuted, marginTop: 8 }}>No featured listings yet</Text>
+              <Text style={{ fontSize: 14, fontFamily: "Urbanist_500Medium", color: Colors.textMuted, marginTop: 8}}>No featured listings yet</Text>
             </View>
           ) : (
             <ScrollView
@@ -226,9 +229,10 @@ export default function HomeScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.featuredScroll}
               decelerationRate="fast"
-              snapToInterval={width - 40}
+              snapToInterval={width - 32}
+              snapToAlignment="start"
               onMomentumScrollEnd={(e) => {
-                const idx = Math.round(e.nativeEvent.contentOffset.x / (width - 40));
+                const idx = Math.round(e.nativeEvent.contentOffset.x / (width - 32));
                 setFeaturedIdx(idx);
               }}
             >
@@ -319,7 +323,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
+  heroSearchFocused: {
+    backgroundColor: "#fff",
+  },
   heroSearchInput: { flex: 1, fontSize: 14, fontFamily: "Urbanist_400Regular", color: "#fff", padding: 0 },
+  heroSearchInputFocused: { color: Colors.text },
   section: { marginBottom: 24 },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, marginBottom: 14 },
   sectionTitle: { fontSize: 18, fontFamily: "Urbanist_700Bold", color: Colors.text, paddingHorizontal: 16, marginBottom: 14 },
@@ -331,7 +339,7 @@ const styles = StyleSheet.create({
   },
   quickActionIcon: { width: 48, height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   quickActionLabel: { fontSize: 10, fontFamily: "Urbanist_700Bold", color: Colors.text, textAlign: "center", lineHeight: 14 },
-  featuredScroll: { paddingHorizontal: 16, gap: 16 },
+  featuredScroll: { paddingHorizontal: 16 },
   featuredCard: {
     height: 200, borderRadius: 16, overflow: "hidden", position: "relative",
     shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 4,

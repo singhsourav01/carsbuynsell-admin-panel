@@ -7,12 +7,14 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { formatCurrency, formatDate } from "@/utils/formatters";
 import { apiRequestDirect } from "@/lib/auth";
+import { fetchMySubscription, ActiveSubscription } from "@/lib/subscription";
 
 const CATEGORIES = ["Sedan", "SUV", "Hatchback", "Luxury", "Sports", "Electric"];
 
@@ -96,6 +98,10 @@ export default function ProfileScreen() {
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState("");
 
+  // Subscription data
+  const [subscription, setSubscription] = useState<ActiveSubscription | null>(null);
+  const [subLoading, setSubLoading] = useState(true);
+
   // Edit form state
   const [editName, setEditName] = useState("");
   const [editGender, setEditGender] = useState("");
@@ -121,6 +127,21 @@ export default function ProfileScreen() {
   }, []);
 
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
+
+  // Fetch subscription
+  const loadSubscription = useCallback(async () => {
+    setSubLoading(true);
+    try {
+      const sub = await fetchMySubscription();
+      setSubscription(sub);
+    } catch (err) {
+      console.error("[PROFILE] Subscription fetch error:", err);
+    } finally {
+      setSubLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadSubscription(); }, [loadSubscription]);
 
   const openEditProfile = () => {
     setEditName(profile?.full_name || profile?.fullName || user?.fullName || "");
@@ -157,10 +178,10 @@ export default function ProfileScreen() {
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().substring(0, 2);
 
   const menu = [
-    { icon: "car-sport-outline", label: "My Vehicles" },
-    { icon: "heart-outline", label: "Saved Listings" },
-    { icon: "notifications-outline", label: "Notifications" },
-    { icon: "help-circle-outline", label: "Help & Support" },
+    { icon: "help-circle-outline", label: "Help & Support", route: "/help" },
+    { icon: "shield-checkmark-outline", label: "Privacy Policy", route: "/privacy" },
+    { icon: "document-text-outline", label: "Terms & Conditions", route: "/terms" },
+    { icon: "wallet-outline", label: "Refund Policy", route: "/refund" },
   ];
 
   return (
@@ -197,23 +218,46 @@ export default function ProfileScreen() {
         ) : null}
 
         {/* Subscription */}
-        <Pressable onPress={() => { setSubVisible(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }} style={styles.subCard}>
-          <LinearGradient colors={[Colors.hero, Colors.heroDark]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
-          <View style={styles.subInner}>
-            <View>
-              <View style={styles.subBadgeRow}>
-                <View style={styles.subActiveBadge}><Text style={styles.subActiveBadgeText}>ACTIVE</Text></View>
-                <Text style={styles.subPlan}>{profile?.plan ?? "STANDARD"}</Text>
-              </View>
-              <Text style={styles.subTitle}>Subscription</Text>
-              {profile?.expiresAt && <Text style={styles.subExpiry}>Expires {formatDate(profile.expiresAt)}</Text>}
-            </View>
-            <View style={styles.subCountWrap}>
-              <Text style={styles.subCount}>{profile?.remainingListings ?? 0}</Text>
-              <Text style={styles.subCountLabel}>listings{"\n"}left</Text>
+        {subLoading ? (
+          <View style={[styles.subCard, { backgroundColor: Colors.card }]}>
+            <View style={styles.subInner}>
+              <ActivityIndicator color={Colors.primary} />
             </View>
           </View>
-        </Pressable>
+        ) : subscription ? (
+          <Pressable onPress={() => { setSubVisible(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }} style={styles.subCard}>
+            <LinearGradient colors={[Colors.hero, Colors.heroDark]} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
+            <View style={styles.subInner}>
+              <View>
+                <View style={styles.subBadgeRow}>
+                  <View style={styles.subActiveBadge}><Text style={styles.subActiveBadgeText}>ACTIVE</Text></View>
+                  <Text style={styles.subPlan}>{subscription.plan?.sp_name ?? "STANDARD"}</Text>
+                </View>
+                <Text style={styles.subTitle}>Subscription</Text>
+                <Text style={styles.subExpiry}>3 transactions per day</Text>
+              </View>
+              <View style={styles.subCountWrap}>
+                <Text style={styles.subCount}>{subscription.sub_remaining_uses ?? subscription.remaining_uses ?? 0}</Text>
+                <Text style={styles.subCountLabel}>daily{"\n"}uses</Text>
+              </View>
+            </View>
+          </Pressable>
+        ) : (
+          <Pressable onPress={() => { setSubVisible(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }} style={styles.subCardInactive}>
+            <View style={styles.subInactiveInner}>
+              <View style={styles.subInactiveIcon}>
+                <Ionicons name="flash" size={24} color={Colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.subInactiveTitle}>No Active Subscription</Text>
+                <Text style={styles.subInactiveSub}>Subscribe to bid or buy vehicles</Text>
+              </View>
+              <View style={styles.subInactiveBtn}>
+                <Text style={styles.subInactiveBtnText}>Subscribe</Text>
+              </View>
+            </View>
+          </Pressable>
+        )}
 
         {/* Sell CTA */}
         <Pressable onPress={() => { setSellVisible(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }} style={styles.sellCta}>
@@ -228,7 +272,7 @@ export default function ProfileScreen() {
         {/* Menu */}
         <View style={styles.menuSection}>
           {menu.map((item, idx) => (
-            <Pressable key={item.label} onPress={() => Haptics.selectionAsync()} style={[styles.menuItem, idx === 0 && { borderTopWidth: 0 }]}>
+            <Pressable key={item.label} onPress={() => { Haptics.selectionAsync(); router.push(item.route as any); }} style={[styles.menuItem, idx === 0 && { borderTopWidth: 0 }]}>
               <View style={styles.menuIconWrap}><Ionicons name={item.icon as any} size={20} color={Colors.primary} /></View>
               <Text style={styles.menuLabel}>{item.label}</Text>
               <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
@@ -242,7 +286,7 @@ export default function ProfileScreen() {
         </Pressable>
       </ScrollView>
       <SellSheet visible={sellVisible} onClose={() => setSellVisible(false)} />
-      <SubscriptionModal visible={subVisible} onClose={() => setSubVisible(false)} onSuccess={() => setSubVisible(false)} mode="renew" />
+      <SubscriptionModal visible={subVisible} onClose={() => setSubVisible(false)} onSuccess={() => { setSubVisible(false); loadSubscription(); }} mode="renew" />
 
       {/* Edit Profile Modal */}
       <Modal visible={editVisible} animationType="slide" transparent onRequestClose={() => setEditVisible(false)}>
@@ -349,6 +393,13 @@ const styles = StyleSheet.create({
   subCountWrap: { alignItems: "center" },
   subCount: { fontSize: 40, fontFamily: "Urbanist_700Bold", color: "#fff" },
   subCountLabel: { fontSize: 11, fontFamily: "Urbanist_400Regular", color: "rgba(255,255,255,0.7)", textAlign: "center" },
+  subCardInactive: { marginHorizontal: 16, borderRadius: 18, overflow: "hidden", marginBottom: 16, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.cardBorder, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  subInactiveInner: { flexDirection: "row", alignItems: "center", padding: 16, gap: 14 },
+  subInactiveIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center" },
+  subInactiveTitle: { fontSize: 16, fontFamily: "Urbanist_700Bold", color: Colors.text },
+  subInactiveSub: { fontSize: 13, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary, marginTop: 2 },
+  subInactiveBtn: { backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+  subInactiveBtnText: { fontSize: 13, fontFamily: "Urbanist_700Bold", color: "#fff" },
   sellCta: { flexDirection: "row", alignItems: "center", gap: 14, backgroundColor: Colors.card, borderRadius: 16, padding: 16, marginHorizontal: 16, marginBottom: 16, borderWidth: 1, borderColor: Colors.cardBorder, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
   sellCtaIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center" },
   sellCtaTitle: { fontSize: 16, fontFamily: "Urbanist_700Bold", color: Colors.text },
