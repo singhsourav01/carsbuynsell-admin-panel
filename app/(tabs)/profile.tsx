@@ -28,7 +28,7 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
     if (!title.trim() || !basePrice.trim()) { Alert.alert("Missing Info", "Please enter vehicle title and price."); return; }
     setLoading(true);
     try {
-      const res = await apiRequestDirect("POST", "http://13.201.55.131:3002/user/sell-request", { title: title.trim(), description: description.trim(), category, listingType, basePrice: parseInt(basePrice, 10) }, true);
+      const res = await apiRequestDirect("POST", "http://13.127.188.130:3002/user/sell-request", { title: title.trim(), description: description.trim(), category, listingType, basePrice: parseInt(basePrice, 10) }, true);
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
@@ -104,7 +104,7 @@ export default function ProfileScreen() {
   const fetchProfile = useCallback(async () => {
     try {
       setProfileError("");
-      const res = await apiRequestDirect("GET", "http://13.201.55.131:3002/user/users-profile", undefined, true);
+      const res = await apiRequestDirect("GET", "http://13.127.188.130:3002/user/users-profile", undefined, true);
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
@@ -132,7 +132,7 @@ export default function ProfileScreen() {
     if (!editName.trim()) return;
     setSaving(true);
     try {
-      const res = await apiRequestDirect("PUT", "http://13.201.55.131:3002/user/users-profile", {
+      const res = await apiRequestDirect("PUT", "http://13.127.188.130:3002/user/users-profile", {
         full_name: editName.trim(),
         gender: editGender,
       }, true);

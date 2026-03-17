@@ -89,7 +89,7 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/api': {
-        target: 'http://13.201.55.131:3001',
+        target: 'http://13.127.188.130:3001',
         changeOrigin: true,
       },
     },

@@ -64,7 +64,7 @@ export default function BuyNowScreen() {
     try {
       const res = await apiRequestDirect(
         "POST",
-        `http://13.201.55.131:3002/user/listings/${item.lst_id}/buy`,
+        `http://13.127.188.130:3002/user/listings/${item.lst_id}/buy`,
         {},
         true,
       );
@@ -98,7 +98,7 @@ export default function BuyNowScreen() {
         sub?.sub_remaining_uses ??
         sub?.remaining_uses ??
         0;
-      
+
       console.log("[DEBUG-SUB] buynow.tsx remainingUses:", remainingUses);
 
       if (sub && remainingUses > 0) {
@@ -124,7 +124,7 @@ export default function BuyNowScreen() {
   const fetchListings = useCallback(async (isRefresh = false) => {
     if (isRefresh) setIsRefreshing(true);
     try {
-      const res = await apiRequestDirect("GET", "http://13.201.55.131:3002/user/listings?type=BUY_NOW");
+      const res = await apiRequestDirect("GET", "http://13.127.188.130:3002/user/listings?type=BUY_NOW");
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }

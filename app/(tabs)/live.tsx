@@ -34,7 +34,7 @@ function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: any | 
     lastBidTime.current = now;
     setLoading(true);
     try {
-      const res = await apiRequestDirect("POST", `http://13.201.55.131:3002/user/listings/${auction.lst_id}/bid`, { bid_amount: amount }, true);
+      const res = await apiRequestDirect("POST", `http://13.127.188.130:3002/user/listings/${auction.lst_id}/bid`, { bid_amount: amount }, true);
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
@@ -139,14 +139,14 @@ export default function LiveScreen() {
     try {
       const sub = await fetchMySubscription();
       console.log("[DEBUG-SUB] live.tsx Subscription:", sub);
-      
+
       const remainingUses =
         sub?.sub_remaining_uses ??
         sub?.remaining_uses ??
         0;
-      
+
       console.log("[DEBUG-SUB] live.tsx remainingUses:", remainingUses);
-      
+
       if (sub && remainingUses > 0) {
         setBidVisible(true);
       } else {
@@ -168,7 +168,7 @@ export default function LiveScreen() {
   const fetchAuctions = useCallback(async (isRefresh = false) => {
     if (isRefresh) setIsRefreshing(true);
     try {
-      const res = await apiRequestDirect("GET", "http://13.201.55.131:3002/user/listings?type=AUCTION");
+      const res = await apiRequestDirect("GET", "http://13.127.188.130:3002/user/listings?type=AUCTION");
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }

@@ -13,7 +13,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "13.201.55.131:3002"
+        "EXPO_PUBLIC_DOMAIN": "13.127.188.130:3002"
       }
     },
     "production": {}

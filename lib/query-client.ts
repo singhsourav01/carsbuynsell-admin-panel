@@ -7,18 +7,18 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
  */
 export function getApiUrl(): string {
   // Use the live server as the default environment if the variable is missing
-  let host = process.env.EXPO_PUBLIC_DOMAIN || "13.201.55.131:3002";
+  let host = process.env.EXPO_PUBLIC_DOMAIN || "13.127.188.130:3002";
 
   try {
     // Determine protocol: Use HTTP for raw IP addresses or localhost, HTTPS for domains
     const isIpOrLocal = host.includes("localhost") || host.match(/^\d+\.\d+\.\d+\.\d+/);
     const protocol = isIpOrLocal ? "http" : "https";
-    
+
     let url = new URL(`${protocol}://${host}`);
     return url.href;
   } catch (e) {
     // Final safety fallback to ensure the app never crashes on startup
-    return "http://13.201.55.131:3002/";
+    return "http://13.127.188.130:3002/";
   }
 }
 
@@ -53,21 +53,21 @@ export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
-  async ({ queryKey }) => {
-    const baseUrl = getApiUrl();
-    const url = new URL(queryKey.join("/") as string, baseUrl);
+    async ({ queryKey }) => {
+      const baseUrl = getApiUrl();
+      const url = new URL(queryKey.join("/") as string, baseUrl);
 
-    const res = await fetch(url.toString(), {
-      credentials: "include",
-    });
+      const res = await fetch(url.toString(), {
+        credentials: "include",
+      });
 
-    if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      return null;
-    }
+      if (unauthorizedBehavior === "returnNull" && res.status === 401) {
+        return null;
+      }
 
-    await throwIfResNotOk(res);
-    return await res.json();
-  };
+      await throwIfResNotOk(res);
+      return await res.json();
+    };
 
 export const queryClient = new QueryClient({
   defaultOptions: {
