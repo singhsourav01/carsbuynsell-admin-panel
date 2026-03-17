@@ -120,20 +120,16 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
 
   const handlePaymentSuccess = async (data: RazorpayPaymentResult) => {
     console.log("[SUB] Payment success from Razorpay:", data.razorpay_payment_id);
+    console.log("[SUB] Full payment data:", JSON.stringify(data));
     try {
-      if (!checkoutOrder) {
-        console.error("[SUB] No order found in state during success callback");
-        return;
-      }
-
-      console.log("[SUB] Verifying payment for order:", data.razorpay_order_id || checkoutOrder.razorpay_order_id);
+      console.log("[SUB] Calling verify-payment for order:", data.razorpay_order_id);
       await verifySubscriptionPayment(
-        data.razorpay_order_id || checkoutOrder.razorpay_order_id,
+        data.razorpay_order_id,
         data.razorpay_payment_id,
         data.razorpay_signature
       );
 
-      console.log("[SUB] Verification successful");
+      console.log("[SUB] Verification successful — subscription activated");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setCheckoutOrder(null);
       setSubscribing(false);
@@ -162,7 +158,7 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
                 <Text style={styles.subtitle}>
                   {subChecked && hasActiveSub
                     ? `${activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 'Active'} transactions remaining`
-                    : "One subscription · 3 transactions"}
+                    : "3 transactions per day"}
                 </Text>
               </View>
               <Pressable onPress={onClose} style={styles.closeBtn}>
@@ -230,18 +226,18 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
                     </View>
                     <Text style={styles.planName}>{defaultPlan.sp_name}</Text>
                     <Text style={styles.planDesc}>
-                      {defaultPlan.sp_description || `Subscribe once to bid or buy up to ${DISPLAY_USES} vehicles`}
+                      {defaultPlan.sp_description || `Bid or buy up to ${DISPLAY_USES} vehicles per day`}
                     </Text>
                     <View style={styles.priceRow}>
                       <Text style={styles.priceCur}>₹</Text>
                       <Text style={styles.priceVal}>{defaultPlan.sp_price ? defaultPlan.sp_price.toLocaleString("en-IN") : "..."}</Text>
-                      <Text style={styles.priceNote}> one-time</Text>
+                      <Text style={styles.priceNote}> /day</Text>
                     </View>
                     <View style={styles.divider} />
                     {[
-                      { icon: "flash", text: `${DISPLAY_USES} vehicle transactions (bid or buy)` },
+                      { icon: "flash", text: `${DISPLAY_USES} vehicle transactions per day (bid or buy)` },
                       { icon: "shield-checkmark", text: "Secure Razorpay payment" },
-                      { icon: "time", text: "Valid until all transactions are used" },
+                      { icon: "time", text: "Daily limit resets every day" },
                       { icon: "car-sport", text: "Access all live auctions & buy now listings" },
                     ].map(({ icon, text }) => (
                       <View key={text} style={styles.featureRow}>
@@ -256,7 +252,7 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
                   <View style={styles.infoBox}>
                     <Ionicons name="information-circle-outline" size={14} color={Colors.info} />
                     <Text style={styles.infoText}>
-                      Each successful bid or purchase deducts one transaction. Subscription expires after {DISPLAY_USES} completed transactions.
+                      Each successful bid or purchase deducts one daily transaction. Your {DISPLAY_USES} daily transactions reset at the start of each day. If you need more than {DISPLAY_USES} in a day, purchase again.
                     </Text>
                   </View>
                 </View>

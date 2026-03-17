@@ -6,13 +6,13 @@ import * as Linking from "expo-linking";
 WebBrowser.maybeCompleteAuthSession();
 
 // ── Real backend (port 8002) handles all subscription API logic ──────────────
-const SUB_BASE = "http://13.201.55.131:3002";
+const SUB_BASE = "http://13.127.188.130:3002";
 const SUB_PATH = "/user/subscriptions";
 
 // ── Local Express server (port 5000) serves the Razorpay checkout HTML page ──
 // NOTE: This must remain 5000, because the real backend (8002) does not have
 // the razorpay-checkout.html file.
-const LOCAL_SERVER = process.env.EXPO_PUBLIC_LOCAL_SERVER || "http://13.201.55.131:3002";
+const LOCAL_SERVER = process.env.EXPO_PUBLIC_LOCAL_SERVER || "http://13.127.188.130:3002";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -31,6 +31,7 @@ export interface ActiveSubscription {
     sub_status: string;
     sub_remaining_uses?: number;
     remaining_uses?: number;
+    sub_daily_uses_reset_date?: string;
     sub_expires_at: string;
     sub_starts_at: string;
     plan: SubscriptionPlan;
@@ -55,8 +56,8 @@ export interface RazorpayPaymentResult {
 
 /**
  * GET /user/subscriptions/me
- * Returns the user's active subscription, or null if none/expired.
- * Backend checks: status=ACTIVE, expires_at > now, remaining_uses > 0
+ * Returns the user's active subscription, or null if none/expired/daily-uses-exhausted.
+ * Backend checks: status=ACTIVE, expires_at > now, daily uses > 0 (resets to 3 each day)
  */
 export async function fetchMySubscription(): Promise<ActiveSubscription | null> {
     try {

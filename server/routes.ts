@@ -395,7 +395,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         {
           sp_id: "plan_vehicle_access",
           sp_name: "Vehicle Access Plan",
-          sp_description: "Bid or buy up to 3 vehicles",
+          sp_description: "Bid or buy up to 3 vehicles per day",
           sp_price: 10000,
           sp_duration: 365,
           sp_is_active: true,
@@ -416,7 +416,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     const sub = activeSubs[userId];
-    if (!sub || sub.sub_remaining_uses <= 0) {
+    if (!sub) {
+      return res.status(404).json({ success: false, statusCode: 404, message: "No active subscription found" });
+    }
+
+    // Daily reset: if the reset date is before today, reset uses to 3
+    const today = new Date().toISOString().slice(0, 10);
+    const resetDate = sub.sub_daily_uses_reset_date
+      ? new Date(sub.sub_daily_uses_reset_date).toISOString().slice(0, 10)
+      : "";
+    if (resetDate < today) {
+      sub.sub_remaining_uses = 3;
+      sub.sub_daily_uses_reset_date = new Date().toISOString();
+    }
+
+    if (sub.sub_remaining_uses <= 0) {
       return res.status(404).json({ success: false, statusCode: 404, message: "No active subscription found" });
     }
 
@@ -432,10 +446,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(401).json({ success: false, statusCode: 401, message: "Unauthorized" });
     }
 
-    // Block if user already has active subscription
+    // Block if user already has active subscription with remaining daily uses
     const existing = activeSubs[userId];
     if (existing && existing.sub_remaining_uses > 0) {
-      return res.status(409).json({ success: false, statusCode: 409, message: "You already have an active subscription" });
+      // Check if daily uses have been reset today — if so, user still has uses left
+      const today = new Date().toISOString().slice(0, 10);
+      const resetDate = existing.sub_daily_uses_reset_date
+        ? new Date(existing.sub_daily_uses_reset_date).toISOString().slice(0, 10)
+        : "";
+      if (resetDate >= today) {
+        return res.status(409).json({ success: false, statusCode: 409, message: "You already have an active subscription" });
+      }
     }
 
     try {
@@ -513,6 +534,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       sub_id: generateToken(),
       sub_status: "ACTIVE",
       sub_remaining_uses: 3,
+      sub_daily_uses_reset_date: now,
       sub_expires_at: pending.expires_at,
       sub_starts_at: now,
       sub_razorpay_order_id: razorpay_order_id,
