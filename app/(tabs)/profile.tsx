@@ -104,27 +104,42 @@ export default function ProfileScreen() {
 
   // Edit form state
   const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
   const [editGender, setEditGender] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Get user ID (could be stored as 'id', 'user_id', etc.)
+  const userId = (user as any)?.id || (user as any)?.user_id || (user as any)?.uld_user_id || "";
 
   const fetchProfile = useCallback(async () => {
     try {
       setProfileError("");
-      const res = await apiRequestDirect("GET", "http://13.127.188.130:3002/user/users-profile", undefined, true);
+      let res: Response;
+
+      // Try user-specific endpoint if we have user ID
+      if (userId) {
+        res = await apiRequestDirect("GET", `http://13.127.188.130:3002/user/users/${userId}`, undefined, false);
+      } else {
+        // Fallback to authenticated profile endpoint
+        res = await apiRequestDirect("GET", "http://13.127.188.130:3002/user/users-profile", undefined, true);
+      }
+
       const rawText = await res.text();
+      console.log("[PROFILE] Fetch response:", rawText.substring(0, 300));
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
       if (res.ok) {
         const profileData = data?.data || data?.user || data;
         setProfile(profileData);
       } else {
-        // setProfileError(`API ${res.status}: ${data?.message || rawText}`);
+        console.log("[PROFILE] API error:", res.status, data?.message);
       }
     } catch (err: any) {
       setProfileError(`Error: ${err?.message || "Failed to fetch profile"}`);
     }
     finally { setProfileLoading(false); }
-  }, []);
+  }, [userId]);
 
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
@@ -144,8 +159,11 @@ export default function ProfileScreen() {
   useEffect(() => { loadSubscription(); }, [loadSubscription]);
 
   const openEditProfile = () => {
-    setEditName(profile?.full_name || profile?.fullName || user?.fullName || "");
-    setEditGender(profile?.gender || "");
+    // Map API fields: user_full_name, user_email, user_primary_phone, user_gender
+    setEditName(profile?.user_full_name || profile?.full_name || user?.fullName || "");
+    setEditEmail(profile?.user_email || profile?.email || user?.email || "");
+    setEditPhone(profile?.user_primary_phone || profile?.phone || user?.phone || "");
+    setEditGender(profile?.user_gender || profile?.gender || "");
     setEditVisible(true);
   };
 
@@ -155,7 +173,9 @@ export default function ProfileScreen() {
     try {
       const res = await apiRequestDirect("PUT", "http://13.127.188.130:3002/user/users-profile", {
         full_name: editName.trim(),
-        gender: editGender,
+        email: editEmail.trim(),
+        phone: editPhone.trim(),
+        gender: editGender.toUpperCase(),
       }, true);
       const rawText = await res.text();
       let data: any = {};
@@ -171,9 +191,10 @@ export default function ProfileScreen() {
     finally { setSaving(false); }
   };
 
-  const displayName = profile?.full_name || profile?.fullName || user?.fullName || "User";
-  const displayEmail = profile?.email || user?.email || "";
-  const displayPhone = profile?.phone || user?.phone || "";
+  // Map API fields for display
+  const displayName = profile?.user_full_name || profile?.full_name || user?.fullName || "User";
+  const displayEmail = profile?.user_email || profile?.email || user?.email || "";
+  const displayPhone = profile?.user_primary_phone || profile?.phone || user?.phone || "";
 
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().substring(0, 2);
 
@@ -311,23 +332,30 @@ export default function ProfileScreen() {
                   />
                 </View>
 
-                {/* Phone — disabled */}
-                <View style={editS.group}>
-                  <Text style={editS.label}>PHONE NUMBER</Text>
-                  <TextInput
-                    style={[editS.input, editS.disabledInput]}
-                    value={displayPhone}
-                    editable={false}
-                  />
-                </View>
-
-                {/* Email — disabled */}
+                {/* Email — editable */}
                 <View style={editS.group}>
                   <Text style={editS.label}>EMAIL ADDRESS</Text>
                   <TextInput
-                    style={[editS.input, editS.disabledInput]}
-                    value={displayEmail}
-                    editable={false}
+                    style={editS.input}
+                    value={editEmail}
+                    onChangeText={setEditEmail}
+                    placeholder="Enter your email"
+                    placeholderTextColor={Colors.textMuted}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                {/* Phone — editable */}
+                <View style={editS.group}>
+                  <Text style={editS.label}>PHONE NUMBER</Text>
+                  <TextInput
+                    style={editS.input}
+                    value={editPhone}
+                    onChangeText={setEditPhone}
+                    placeholder="Enter your phone number"
+                    placeholderTextColor={Colors.textMuted}
+                    keyboardType="phone-pad"
                   />
                 </View>
 
@@ -335,16 +363,18 @@ export default function ProfileScreen() {
                 <View style={editS.group}>
                   <Text style={editS.label}>GENDER</Text>
                   <View style={editS.radioRow}>
-                    {["Male", "Female", "Other"].map((g) => (
+                    {["MALE", "FEMALE", "OTHER"].map((g) => (
                       <Pressable
                         key={g}
                         onPress={() => { setEditGender(g); Haptics.selectionAsync(); }}
-                        style={[editS.radioBtn, editGender === g && editS.radioBtnActive]}
+                        style={[editS.radioBtn, editGender.toUpperCase() === g && editS.radioBtnActive]}
                       >
-                        <View style={[editS.radioCircle, editGender === g && editS.radioCircleActive]}>
-                          {editGender === g && <View style={editS.radioDot} />}
+                        <View style={[editS.radioCircle, editGender.toUpperCase() === g && editS.radioCircleActive]}>
+                          {editGender.toUpperCase() === g && <View style={editS.radioDot} />}
                         </View>
-                        <Text style={[editS.radioText, editGender === g && editS.radioTextActive]}>{g}</Text>
+                        <Text style={[editS.radioText, editGender.toUpperCase() === g && editS.radioTextActive]}>
+                          {g.charAt(0) + g.slice(1).toLowerCase()}
+                        </Text>
                       </Pressable>
                     ))}
                   </View>
