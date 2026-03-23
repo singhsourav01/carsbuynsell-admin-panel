@@ -16,6 +16,19 @@ import { formatCurrency } from "@/utils/formatters";
 import { apiRequestDirect } from "@/lib/auth";
 import { fetchMySubscription } from "@/lib/subscription";
 
+function getFirstListingImageUri(item: any): string | undefined {
+  const firstImage = item?.images?.[0] || item?.user_portfolio?.[0];
+  if (!firstImage) return undefined;
+  if (typeof firstImage === "string") return firstImage;
+  return (
+    firstImage.url ||
+    firstImage.file_url ||
+    firstImage.file_signed_url ||
+    firstImage.signed_url ||
+    firstImage.image_url
+  );
+}
+
 function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: any | null; visible: boolean; onClose: () => void; onBidSuccess: (bid: number) => void }) {
   const [bidAmount, setBidAmount] = useState("");
   const [loading, setLoading] = useState(false);
@@ -88,7 +101,7 @@ function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: any | 
 }
 
 const AuctionCard = memo(function AuctionCard({ item, onPress }: { item: any; onPress: () => void }) {
-  const imageUri = item.images?.[0]?.url || item.images?.[0]?.file_url;
+  const imageUri = getFirstListingImageUri(item);
   const currentBid = Number(item.lst_current_bid || item.lst_price || 0);
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.card, { opacity: pressed ? 0.95 : 1 }]}>

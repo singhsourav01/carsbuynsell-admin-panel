@@ -15,8 +15,21 @@ import { apiRequestDirect } from "@/lib/auth";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { fetchMySubscription } from "@/lib/subscription";
 
+function getFirstListingImageUri(item: any): string | undefined {
+  const firstImage = item?.images?.[0] || item?.user_portfolio?.[0];
+  if (!firstImage) return undefined;
+  if (typeof firstImage === "string") return firstImage;
+  return (
+    firstImage.url ||
+    firstImage.file_url ||
+    firstImage.file_signed_url ||
+    firstImage.signed_url ||
+    firstImage.image_url
+  );
+}
+
 const VCard = memo(function VCard({ item, onBuyNow }: { item: any; onBuyNow: () => void }) {
-  const imageUri = item.images?.[0]?.url || item.images?.[0]?.file_url;
+  const imageUri = getFirstListingImageUri(item);
   return (
     <Pressable onPress={() => { router.push(`/listing/${item.lst_id}` as any); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }} style={({ pressed }) => [styles.card, { opacity: pressed ? 0.95 : 1 }]}>
       <View style={styles.imgWrap}>
