@@ -24,6 +24,12 @@ import { fetchMySubscription } from "@/lib/subscription";
 
 const { width } = Dimensions.get("window");
 
+function getImageUri(img: any): string | undefined {
+    if (!img) return undefined;
+    if (typeof img === "string") return img;
+    return img.url || img.file_url || img.file_signed_url || img.signed_url || img.image_url;
+}
+
 export default function ListingDetailScreen() {
     const { id, viewOnly } = useLocalSearchParams<{ id: string; viewOnly?: string }>();
     const insets = useSafeAreaInsets();
@@ -203,8 +209,9 @@ export default function ListingDetailScreen() {
 
 
     const isAuction = listing?.lst_type === "AUCTION";
-    const images = listing?.images || [];
-    const hasImages = images.length > 0;
+    const rawGallery = (listing?.images?.length ? listing.images : listing?.user_portfolio) || [];
+    const galleryImages = rawGallery.map((img: any) => getImageUri(img)).filter(Boolean);
+    const hasImages = galleryImages.length > 0;
 
     if (isLoading) {
         return (
@@ -259,10 +266,10 @@ export default function ListingDetailScreen() {
                                 setActiveImageIdx(idx);
                             }}
                         >
-                            {images.map((img: any, i: number) => (
+                            {galleryImages.map((uri: string, i: number) => (
                                 <Image
                                     key={i}
-                                    source={{ uri: img.url || img.file_url }}
+                                    source={{ uri }}
                                     style={{ width, height: 320 }}
                                     contentFit="cover"
                                     transition={300}
@@ -294,9 +301,9 @@ export default function ListingDetailScreen() {
                     </View>
 
                     {/* Image Dots */}
-                    {images.length > 1 && (
+                    {galleryImages.length > 1 && (
                         <View style={s.dotsRow}>
-                            {images.map((_: any, i: number) => (
+                            {galleryImages.map((_: string, i: number) => (
                                 <View key={i} style={[s.dot, i === activeImageIdx && s.dotActive]} />
                             ))}
                         </View>

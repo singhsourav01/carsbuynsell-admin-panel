@@ -33,16 +33,29 @@ const QUICK_ACTIONS = [
   { id: "deals", icon: "receipt-outline", label: "MY\nDEALS", color: "#F59E0B", bg: "#FFFBEB", route: "/(tabs)/deals" },
 ] as const;
 
+function getFirstListingImageUri(item: any): string | undefined {
+  const firstImage = item?.images?.[0] || item?.user_portfolio?.[0];
+  if (!firstImage) return undefined;
+  if (typeof firstImage === "string") return firstImage;
+  return (
+    firstImage.url ||
+    firstImage.file_url ||
+    firstImage.file_signed_url ||
+    firstImage.signed_url ||
+    firstImage.image_url
+  );
+}
+
 function FeaturedCard({ item, isActive }: { item: any; isActive: boolean }) {
   const isAuction = item.lst_type === "AUCTION";
-  const imageUri = item.images?.[0]?.url || item.images?.[0]?.file_url;
+  const imageUri = getFirstListingImageUri(item);
   return (
     <Pressable
       onPress={() => { router.push(`/listing/${item.lst_id}` as any); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
       style={[styles.featuredCard, { width: width - 48, marginRight: 16 }]}
     >
       {imageUri ? (
-        <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
+        <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} contentFit="contain" transition={300} />
       ) : (
         <LinearGradient colors={[Colors.hero, Colors.heroDark]} style={StyleSheet.absoluteFill} />
       )}
@@ -76,7 +89,7 @@ const MemoFeaturedCard = memo(FeaturedCard);
 
 function RecentCard({ item }: { item: any }) {
   const isAuction = item.lst_type === "AUCTION";
-  const imageUri = item.images?.[0]?.url || item.images?.[0]?.file_url;
+  const imageUri = getFirstListingImageUri(item);
   return (
     <Pressable
       onPress={() => { router.push(`/listing/${item.lst_id}` as any); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
@@ -84,7 +97,7 @@ function RecentCard({ item }: { item: any }) {
     >
       <View style={styles.recentImgWrap}>
         {imageUri ? (
-          <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} contentFit="cover" />
+          <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} contentFit="contain" />
         ) : (
           <LinearGradient colors={[Colors.hero, Colors.heroDark]} style={StyleSheet.absoluteFill} />
         )}
