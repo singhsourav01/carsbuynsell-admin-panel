@@ -19,6 +19,7 @@
     },
     "android": {
       "package": "com.myapp",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#0D0D18",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -45,7 +46,15 @@
       "expo-web-browser",
       "expo-secure-store",
       "expo-location",
-      "expo-image-picker"
+      "expo-image-picker",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
