@@ -23,6 +23,7 @@ const activeSubs: Record<string, {
   sub_id: string; sub_status: string; sub_remaining_uses: number;
   sub_expires_at: string; sub_starts_at: string;
   sub_razorpay_order_id: string; sub_razorpay_payment_id: string;
+  sub_daily_uses_reset_date?: string;
   plan: { sp_id: string; sp_name: string; sp_price: number; sp_duration: number; sp_description: string };
 }> = {};
 

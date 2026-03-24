@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ]);
         if (storedToken && storedUser) {
           setToken(storedToken);
-          setUser(storedUser as User);
+          setUser(storedUser as unknown as User);
           if (storedRefresh) setRToken(storedRefresh);
         }
       } catch {
