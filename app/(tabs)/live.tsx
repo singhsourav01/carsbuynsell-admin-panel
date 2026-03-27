@@ -3,7 +3,6 @@ import {
   View, Text, FlatList, Pressable, StyleSheet, Modal,
   TextInput, ActivityIndicator, Alert, RefreshControl,
 } from "react-native";
-import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -12,9 +11,17 @@ import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { CountdownTimer } from "@/components/CountdownTimer";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
+import { ListingSearchFilters, type ListingCategory, type VehicleFilters } from "@/components/ListingSearchFilters";
 import { formatCurrency } from "@/utils/formatters";
 import { apiRequestDirect } from "@/lib/auth";
 import { fetchMySubscription } from "@/lib/subscription";
+
+const EMPTY_FILTERS: VehicleFilters = {
+  fuelType: [],
+  transmission: [],
+  bodyType: [],
+  ownership: [],
+};
 
 function getFirstListingImageUri(item: any): string | undefined {
   const firstImage = item?.images?.[0] || item?.user_portfolio?.[0];
@@ -175,13 +182,50 @@ export default function LiveScreen() {
 
   // API data
   const [auctions, setAuctions] = useState<any[]>([]);
+  const [categories, setCategories] = useState<ListingCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [appliedFilters, setAppliedFilters] = useState<VehicleFilters>(EMPTY_FILTERS);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+    }, 350);
+
+    return () => clearTimeout(timeout);
+  }, [searchQuery]);
+
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await apiRequestDirect("GET", "http://13.127.188.130:3002/user/home");
+      const rawText = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(rawText); } catch { data = {}; }
+      if (res.ok) {
+        setCategories(data?.data?.categories || []);
+      }
+    } catch {
+      setCategories([]);
+    }
+  }, []);
 
   const fetchAuctions = useCallback(async (isRefresh = false) => {
     if (isRefresh) setIsRefreshing(true);
+
+    const params = new URLSearchParams({ type: "AUCTION" });
+
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (selectedCategory !== "all") params.set("category", selectedCategory);
+    if (appliedFilters.fuelType.length > 0) params.set("fuel_type", appliedFilters.fuelType.join(","));
+    if (appliedFilters.transmission.length > 0) params.set("transmission", appliedFilters.transmission.join(","));
+    if (appliedFilters.bodyType.length > 0) params.set("body_type", appliedFilters.bodyType.join(","));
+    if (appliedFilters.ownership.length > 0) params.set("ownership", appliedFilters.ownership.join(","));
+
     try {
-      const res = await apiRequestDirect("GET", "http://13.127.188.130:3002/user/listings?type=AUCTION");
+      const res = await apiRequestDirect("GET", `http://13.127.188.130:3002/user/listings?${params.toString()}`);
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
@@ -194,9 +238,11 @@ export default function LiveScreen() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [appliedFilters, debouncedSearch, selectedCategory]);
 
   useEffect(() => { fetchAuctions(); }, [fetchAuctions]);
+
+  useEffect(() => { fetchCategories(); }, [fetchCategories]);
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
@@ -212,7 +258,6 @@ export default function LiveScreen() {
     lst_current_bid: localBids[a.lst_id] ?? a.lst_current_bid,
   }));
 
-  const handlePress = useCallback((a: any) => { router.push(`/listing/${a.lst_id}` as any); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }, []);
   const keyExtractor = useCallback((item: any) => item.lst_id, []);
   const renderItem = useCallback(({ item }: { item: any }) => <AuctionCard item={item} onPress={() => handleBidNowPress(item)} />, [handleBidNowPress]);
 
@@ -225,6 +270,20 @@ export default function LiveScreen() {
         </View>
         <View style={styles.liveIndicator}><View style={styles.livePulse} /><Text style={styles.liveText}>LIVE</Text></View>
       </View>
+
+      <ListingSearchFilters
+        title="Live Bidding Floor"
+        subtitle="Compete in real-time for the best inventory."
+        searchPlaceholder="Search make, model..."
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        categories={categories}
+        selectedCategory={selectedCategory}
+        onCategorySelect={setSelectedCategory}
+        appliedFilters={appliedFilters}
+        onApplyFilters={setAppliedFilters}
+      />
+
       {isLoading ? <View style={styles.loadWrap}><ActivityIndicator size="large" color={Colors.primary} /></View> : (
         <FlatList data={displayAuctions} renderItem={renderItem} keyExtractor={keyExtractor}
           contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}
@@ -251,7 +310,7 @@ const styles = StyleSheet.create({
   livePulse: { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.danger },
   liveText: { fontSize: 11, fontFamily: "Urbanist_700Bold", color: Colors.danger, letterSpacing: 0.5 },
   loadWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  list: { paddingHorizontal: 16, paddingBottom: 100, gap: 16 },
+  list: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 100, gap: 16 },
   card: { backgroundColor: Colors.card, borderRadius: 20, overflow: "hidden", borderWidth: 1, borderColor: Colors.cardBorder, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
   imgWrap: { height: 170, position: "relative" },
   imgGrad: { ...StyleSheet.absoluteFillObject, top: "40%" },

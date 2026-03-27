@@ -20,6 +20,7 @@ import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatCurrency } from "@/utils/formatters";
+import { sortCategoriesByPreferredSequence } from "@/utils/category-order";
 import { CountdownTimer } from "@/components/CountdownTimer";
 import { apiRequestDirect } from "@/lib/auth";
 
@@ -140,7 +141,7 @@ export default function HomeScreen() {
       if (res.ok && data?.data) {
         setFeatured(data.data.featured || []);
         setRecent(data.data.recent?.data || []);
-        setCategories(data.data.categories || []);
+        setCategories(sortCategoriesByPreferredSequence(data.data.categories || []));
       }
     } catch { /* ignore */ }
     finally {

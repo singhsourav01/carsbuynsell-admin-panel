@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, memo } from "react";
 import {
   View, Text, FlatList, Pressable, StyleSheet,
-  ActivityIndicator, RefreshControl, TextInput, Alert,
+  ActivityIndicator, RefreshControl, Alert,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +14,14 @@ import { formatCurrency } from "@/utils/formatters";
 import { apiRequestDirect } from "@/lib/auth";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { fetchMySubscription } from "@/lib/subscription";
+import { ListingSearchFilters, type ListingCategory, type VehicleFilters } from "@/components/ListingSearchFilters";
+
+const EMPTY_FILTERS: VehicleFilters = {
+  fuelType: [],
+  transmission: [],
+  bodyType: [],
+  ownership: [],
+};
 
 function getFirstListingImageUri(item: any): string | undefined {
   const firstImage = item?.images?.[0] || item?.user_portfolio?.[0];
@@ -65,12 +73,24 @@ export default function BuyNowScreen() {
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
   const [listings, setListings] = useState<any[]>([]);
+  const [categories, setCategories] = useState<ListingCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [appliedFilters, setAppliedFilters] = useState<VehicleFilters>(EMPTY_FILTERS);
   const [subVisible, setSubVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [buyingItem, setBuyingItem] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+    }, 350);
+
+    return () => clearTimeout(timeout);
+  }, [searchQuery]);
 
   const executeBuyNow = useCallback(async (item: any) => {
     setBuyingItem(item.lst_id);
@@ -134,10 +154,34 @@ export default function BuyNowScreen() {
 
   }, [executeBuyNow]);
 
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await apiRequestDirect("GET", "http://13.127.188.130:3002/user/home");
+      const rawText = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(rawText); } catch { data = {}; }
+      if (res.ok) {
+        setCategories(data?.data?.categories || []);
+      }
+    } catch {
+      setCategories([]);
+    }
+  }, []);
+
   const fetchListings = useCallback(async (isRefresh = false) => {
     if (isRefresh) setIsRefreshing(true);
+
+    const params = new URLSearchParams({ type: "BUY_NOW" });
+
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (selectedCategory !== "all") params.set("category", selectedCategory);
+    if (appliedFilters.fuelType.length > 0) params.set("fuel_type", appliedFilters.fuelType.join(","));
+    if (appliedFilters.transmission.length > 0) params.set("transmission", appliedFilters.transmission.join(","));
+    if (appliedFilters.bodyType.length > 0) params.set("body_type", appliedFilters.bodyType.join(","));
+    if (appliedFilters.ownership.length > 0) params.set("ownership", appliedFilters.ownership.join(","));
+
     try {
-      const res = await apiRequestDirect("GET", "http://13.127.188.130:3002/user/listings?type=BUY_NOW");
+      const res = await apiRequestDirect("GET", `http://13.127.188.130:3002/user/listings?${params.toString()}`);
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
@@ -151,16 +195,13 @@ export default function BuyNowScreen() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [appliedFilters, debouncedSearch, selectedCategory]);
 
   useEffect(() => { fetchListings(); }, [fetchListings]);
 
-  const handleRefresh = useCallback(() => { fetchListings(true); }, [fetchListings]);
+  useEffect(() => { fetchCategories(); }, [fetchCategories]);
 
-  const query = searchQuery.trim().toLowerCase();
-  const filtered = query
-    ? listings.filter((item) => item.lst_title?.toLowerCase().includes(query))
-    : listings;
+  const handleRefresh = useCallback(() => { fetchListings(true); }, [fetchListings]);
 
   const keyExtractor = useCallback((item: any) => item.lst_id, []);
   const renderItem = useCallback(({ item }: { item: any }) => (
@@ -171,32 +212,28 @@ export default function BuyNowScreen() {
     <View style={[styles.container, { paddingTop: topPad }]}>
       <View style={styles.header}>
         <Text style={styles.pageTitle}>Buy Now</Text>
-        <Text style={styles.pageSub}>{filtered.length} vehicle{filtered.length !== 1 ? "s" : ""} available</Text>
+        <Text style={styles.pageSub}>{listings.length} vehicle{listings.length !== 1 ? "s" : ""} available</Text>
       </View>
 
-      {/* Search Bar */}
-      <View style={styles.searchBar}>
-        <Ionicons name="search-outline" size={18} color={Colors.textMuted} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search vehicles..."
-          placeholderTextColor={Colors.textMuted}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          returnKeyType="search"
-        />
-        {searchQuery.length > 0 && (
-          <Pressable onPress={() => setSearchQuery("")}>
-            <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
-          </Pressable>
-        )}
-      </View>
+      <ListingSearchFilters
+        title="Direct Buy Inventory"
+        subtitle="Get vehicles instantly at a fixed price."
+        searchPlaceholder="Search make, model..."
+        heroColor="#2563eb"
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        categories={categories}
+        selectedCategory={selectedCategory}
+        onCategorySelect={setSelectedCategory}
+        appliedFilters={appliedFilters}
+        onApplyFilters={setAppliedFilters}
+      />
 
       {isLoading ? <View style={styles.loadWrap}><ActivityIndicator size="large" color={Colors.primary} /></View> : (
-        <FlatList data={filtered} renderItem={renderItem} keyExtractor={keyExtractor}
+        <FlatList data={listings} renderItem={renderItem} keyExtractor={keyExtractor}
           contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={Colors.primary} />}
-          ListEmptyComponent={<View style={styles.empty}><Ionicons name="car-outline" size={48} color={Colors.textMuted} /><Text style={styles.emptyTitle}>No Vehicles</Text><Text style={styles.emptySub}>{query ? "No results for your search" : "Check back soon for new listings"}</Text></View>}
+          ListEmptyComponent={<View style={styles.empty}><Ionicons name="car-outline" size={48} color={Colors.textMuted} /><Text style={styles.emptyTitle}>No Vehicles</Text><Text style={styles.emptySub}>Try changing your search or filters</Text></View>}
         />
       )}
       <SubscriptionModal
@@ -226,14 +263,8 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingBottom: 8 },
   pageTitle: { fontSize: 24, fontFamily: "Urbanist_700Bold", color: Colors.text },
   pageSub: { fontSize: 13, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary, marginTop: 2 },
-  searchBar: {
-    flexDirection: "row", alignItems: "center", gap: 10, marginHorizontal: 16, marginBottom: 14,
-    backgroundColor: Colors.inputBg, borderRadius: 12, borderWidth: 1, borderColor: Colors.inputBorder,
-    paddingHorizontal: 14, paddingVertical: 10,
-  },
-  searchInput: { flex: 1, fontSize: 14, fontFamily: "Urbanist_400Regular", color: Colors.text, padding: 0 },
   loadWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  list: { paddingHorizontal: 16, paddingBottom: 100, gap: 14 },
+  list: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 100, gap: 14 },
   card: { backgroundColor: Colors.card, borderRadius: 18, overflow: "hidden", borderWidth: 1, borderColor: Colors.cardBorder, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
   imgWrap: { height: 155, position: "relative" },
   badge: { position: "absolute", top: 12, left: 12, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: Colors.success, borderRadius: 7, paddingHorizontal: 9, paddingVertical: 4 },
