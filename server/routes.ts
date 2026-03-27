@@ -42,7 +42,7 @@ const users: Record<string, User> = {
   demo: {
     id: "demo",
     fullName: "Demo User",
-    email: "demo@autobid.in",
+    email: "demo@carsbuynsell.in",
     phone: "+91 9999999999",
     password: "demo123",
     status: "ACCEPTED",
@@ -240,7 +240,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       success: true,
       data: {
         token,
-        user: { id: "demo", fullName: "Demo User", email: "demo@autobid.in", phone: "+91 9999999999" },
+        user: { id: "demo", fullName: "Demo User", email: "demo@carsbuynsell.in", phone: "+91 9999999999" },
       },
     });
   });
@@ -361,7 +361,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       success: true,
       data: {
         fullName: user?.fullName ?? "Demo User",
-        email: user?.email ?? "demo@autobid.in",
+        email: user?.email ?? "demo@carsbuynsell.in",
         phone: user?.phone ?? "+91 9999999999",
         subscription: { status: "ACTIVE", remainingListings: 2, expiresAt: "2026-05-20T00:00:00.000Z" },
       },

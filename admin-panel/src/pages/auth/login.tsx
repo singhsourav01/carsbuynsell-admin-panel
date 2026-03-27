@@ -70,7 +70,7 @@ export default function LoginPage() {
                         type="text"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="admin@autobid.in"
+                        placeholder="admin@carsbuynsell.in"
                         className="w-full h-[52px] bg-white border border-card-border rounded-2xl pl-11 pr-4 text-[15px] font-medium text-text-primary placeholder:text-text-muted/60 hover:border-primary/30 transition-all"
                     />
                 </div>

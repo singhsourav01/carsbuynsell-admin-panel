@@ -12,7 +12,6 @@ import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
-import { formatCurrency, formatDate } from "@/utils/formatters";
 import { apiRequestDirect } from "@/lib/auth";
 import { fetchMySubscription, ActiveSubscription } from "@/lib/subscription";
 
@@ -22,7 +21,6 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("SUV");
-  const [listingType, setListingType] = useState<"AUCTION" | "BUY_NOW">("AUCTION");
   const [basePrice, setBasePrice] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -30,13 +28,36 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
     if (!title.trim() || !basePrice.trim()) { Alert.alert("Missing Info", "Please enter vehicle title and price."); return; }
     setLoading(true);
     try {
-      const res = await apiRequestDirect("POST", "http://13.127.188.130:3002/user/sell-request", { title: title.trim(), description: description.trim(), category, listingType, basePrice: parseInt(basePrice, 10) }, true);
+      // Call the vehicle-records API with the correct payload
+      const res = await apiRequestDirect("POST", "http://13.127.188.130:3002/user/vehicle-records", {
+        uvr_title: title.trim(),
+        uvr_description: description.trim(),
+        uvr_category: category,
+        uvr_base_price: parseInt(basePrice, 10)
+      }, true);
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
-      if (res.ok) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); Alert.alert("Submitted!", data?.message || "Vehicle submitted for review."); setTitle(""); setDescription(""); setBasePrice(""); onClose(); }
-      else { Alert.alert("Error", data?.message || "Failed to submit."); }
-    } catch { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); }
+      if (res.ok) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert(
+          "Vehicle Submitted! 🎉",
+          "Your vehicle has been submitted successfully. Admin will review and contact you soon.",
+          [{ text: "OK", style: "default" }]
+        );
+        setTitle("");
+        setDescription("");
+        setBasePrice("");
+        setCategory("SUV");
+        onClose();
+      } else {
+        Alert.alert("Error", data?.message || "Failed to submit vehicle.");
+      }
+    } catch (err) {
+      console.error("[SELL] Submit error:", err);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Error", "Network error. Please try again.");
+    }
     finally { setLoading(false); }
   };
 
@@ -55,17 +76,6 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={sellS.chipsRow}>
                   {CATEGORIES.map(c => <Pressable key={c} onPress={() => { setCategory(c); Haptics.selectionAsync(); }} style={[sellS.chip, category === c && sellS.chipActive]}><Text style={[sellS.chipText, category === c && sellS.chipActiveText]}>{c}</Text></Pressable>)}
                 </ScrollView>
-              </View>
-              <View style={sellS.group}>
-                <Text style={sellS.label}>Listing Type</Text>
-                <View style={sellS.typeRow}>
-                  {(["AUCTION", "BUY_NOW"] as const).map(t => (
-                    <Pressable key={t} onPress={() => { setListingType(t); Haptics.selectionAsync(); }} style={[sellS.typeBtn, listingType === t && sellS.typeBtnActive]}>
-                      <Ionicons name={t === "AUCTION" ? "flash" : "pricetag"} size={16} color={listingType === t ? Colors.primary : Colors.textMuted} />
-                      <Text style={[sellS.typeBtnText, listingType === t && { color: Colors.primary }]}>{t === "AUCTION" ? "Live Auction" : "Buy Now"}</Text>
-                    </Pressable>
-                  ))}
-                </View>
               </View>
               <View style={sellS.group}>
                 <Text style={sellS.label}>Base Price (₹)</Text>
@@ -90,6 +100,7 @@ export default function ProfileScreen() {
   const { user, logout } = useAuth();
   const [sellVisible, setSellVisible] = useState(false);
   const [subVisible, setSubVisible] = useState(false);
+  const [sellSubVisible, setSellSubVisible] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
@@ -281,11 +292,11 @@ export default function ProfileScreen() {
         )}
 
         {/* Sell CTA */}
-        <Pressable onPress={() => { setSellVisible(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }} style={styles.sellCta}>
+        <Pressable onPress={() => { setSellSubVisible(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }} style={styles.sellCta}>
           <View style={styles.sellCtaIcon}><Ionicons name="car-sport" size={20} color={Colors.primary} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.sellCtaTitle}>Sell Your Vehicle</Text>
-            <Text style={styles.sellCtaSub}>Submit for admin review</Text>
+            <Text style={styles.sellCtaSub}>₹800 listing fee • 365 days visibility</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
         </Pressable>
@@ -308,6 +319,15 @@ export default function ProfileScreen() {
       </ScrollView>
       <SellSheet visible={sellVisible} onClose={() => setSellVisible(false)} />
       <SubscriptionModal visible={subVisible} onClose={() => setSubVisible(false)} onSuccess={() => { setSubVisible(false); loadSubscription(); }} mode="renew" />
+      <SubscriptionModal
+        visible={sellSubVisible}
+        onClose={() => setSellSubVisible(false)}
+        onSuccess={() => {
+          setSellSubVisible(false);
+          setSellVisible(true);
+        }}
+        planType="sell"
+      />
 
       {/* Edit Profile Modal */}
       <Modal visible={editVisible} animationType="slide" transparent onRequestClose={() => setEditVisible(false)}>
@@ -458,10 +478,6 @@ const sellS = StyleSheet.create({
   chipActive: { backgroundColor: Colors.primaryLight, borderColor: Colors.primary },
   chipText: { fontSize: 13, fontFamily: "Urbanist_600SemiBold", color: Colors.textSecondary },
   chipActiveText: { color: Colors.primary },
-  typeRow: { flexDirection: "row", gap: 12 },
-  typeBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: Colors.surface, borderRadius: 12, borderWidth: 1, borderColor: Colors.cardBorder, paddingVertical: 12 },
-  typeBtnActive: { backgroundColor: Colors.primaryLight, borderColor: Colors.primary },
-  typeBtnText: { fontSize: 14, fontFamily: "Urbanist_600SemiBold", color: Colors.textMuted },
   priceWrap: { flexDirection: "row", alignItems: "center", backgroundColor: Colors.inputBg, borderWidth: 1, borderColor: Colors.inputBorder, borderRadius: 12, paddingHorizontal: 14, height: 52 },
   rupee: { fontSize: 18, fontFamily: "Urbanist_700Bold", color: Colors.textSecondary, marginRight: 6 },
   priceInput: { flex: 1, fontSize: 18, fontFamily: "Urbanist_700Bold", color: Colors.text },

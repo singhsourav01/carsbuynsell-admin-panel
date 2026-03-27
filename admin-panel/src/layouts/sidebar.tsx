@@ -47,8 +47,8 @@ export function Sidebar() {
                 </div>
                 {!sidebarCollapsed && (
                     <div className="overflow-hidden">
-                        <h1 className="text-white font-bold text-[17px] leading-tight tracking-tight">AutoBid</h1>
-                        <p className="text-white/30 text-[11px] font-medium leading-tight">Admin Panel</p>
+                        <h1 className="text-white font-bold text-[17px] leading-tight tracking-tight">CarsbuyNsell</h1>
+                        <p className="text-white/30 text-[11px] font-medium leading-tight">Admin Panel by Raj Motors</p>
                     </div>
                 )}
             </div>

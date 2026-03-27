@@ -34,6 +34,8 @@ function NativeTabLayout() {
   );
 }
 
+import { BrandHeader } from "@/components/BrandHeader";
+
 function ClassicTabLayout() {
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
@@ -41,7 +43,8 @@ function ClassicTabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        header: () => <BrandHeader />,
         tabBarActiveTintColor: Colors.primary,
         tabBarInactiveTintColor: Colors.tabIconDefault,
         tabBarStyle: {

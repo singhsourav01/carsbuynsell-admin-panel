@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "AutoBid",
-    "slug": "autobid",
+    "name": "CarsbuyNsell",
+    "slug": "carsbuynsell",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "autobid",
+    "scheme": "carsbuynsell",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
@@ -65,7 +65,7 @@
         "origin": "https://replit.com/"
       },
       "eas": {
-        "projectId": "b45d7b8d-1c11-4d3b-8d6e-ccc024a4f13b"
+        "projectId": "b0cd7628-740e-4d17-8748-0579ad53f356"
       }
     },
     "owner": "souravxox01"

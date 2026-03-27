@@ -130,11 +130,11 @@ export function RazorpayCheckoutModal({ visible, order, onSuccess, onClose }: Ra
               key: "${safeKeyId}",
               amount: ${safeAmount},
               currency: "${safeCurrency}",
-              name: "AutoBid",
+              name: "CarsbuyNsell",
               description: "Vehicle Access Subscription",
               order_id: "${safeOrderId}",
               prefill: {
-                name: "AutoBid User",
+                name: "CarsbuyNsell User",
                 email: "user@example.com",
                 contact: "9999999999"
               },

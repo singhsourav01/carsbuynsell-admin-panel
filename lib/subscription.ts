@@ -133,15 +133,15 @@ export async function createSubscriptionOrder(plan_id: string): Promise<CreateOr
  *
  * Flow:
  *  1. Build URL to LOCAL_SERVER/razorpay-checkout with order params as query string
- *  2. Open via openAuthSessionAsync — waits for the autobid:// deep-link redirect
+ *  2. Open via openAuthSessionAsync — waits for the carsbuynsell:// deep-link redirect
  *  3. Razorpay modal opens in browser; buyer completes payment
  *  4. On success, the HTML page redirects to:
- *       autobid://payment-callback?status=success&razorpay_payment_id=...
+ *       carsbuynsell://payment-callback?status=success&razorpay_payment_id=...
  *  5. We parse the params and return them
  */
 export async function openRazorpayCheckout(
     order: CreateOrderResult,
-    userName = "AutoBid User",
+    userName = "CarsbuyNsell User",
     userEmail = "",
 ): Promise<RazorpayPaymentResult> {
     const redirectUrl = Linking.createURL("payment-callback");
@@ -175,7 +175,7 @@ export async function openRazorpayCheckout(
         throw new Error("Payment window closed before completion.");
     }
 
-    // Parse: autobid://payment-callback?status=success&razorpay_payment_id=...
+    // Parse: carsbuynsell://payment-callback?status=success&razorpay_payment_id=...
     const parsed = Linking.parse(result.url);
     const q = parsed.queryParams ?? {};
     console.log("[RZP] Callback params:", q);

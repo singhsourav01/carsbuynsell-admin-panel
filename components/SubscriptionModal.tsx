@@ -24,9 +24,11 @@ interface SubscriptionModalProps {
   onClose: () => void;
   onSuccess: () => void;
   mode?: "subscribe" | "renew";
+  /** Filter plans by type: "auction" for full subscription, "sell" for user vehicle subscription */
+  planType?: "auction" | "sell";
 }
 
-export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionModalProps) {
+export function SubscriptionModal({ visible, onClose, onSuccess, planType = "auction" }: SubscriptionModalProps) {
   const [activeSub, setActiveSub] = useState<ActiveSubscription | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [subChecked, setSubChecked] = useState(false);
@@ -42,13 +44,37 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
         fetchPlans()
       ]);
       setActiveSub(sub);
-      setPlans(fetchedPlans);
+
+      // Filter plans based on planType
+      // "sell" type filters for User Vehicle Subscription (sp_id: sub_002, price: 800)
+      // "auction" type filters for the full subscription (price: 10000)
+      let filteredPlans = fetchedPlans;
+      console.log("[SUB] All plans from API:", JSON.stringify(fetchedPlans));
+      console.log("[SUB] Filtering for planType:", planType);
+
+      if (planType === "sell") {
+        filteredPlans = fetchedPlans.filter(
+          (p) => p.sp_id === "sub_002" ||
+                 p.sp_name.toLowerCase().includes("user vehicle") ||
+                 Number(p.sp_price) === 800
+        );
+      } else if (planType === "auction") {
+        filteredPlans = fetchedPlans.filter(
+          (p) => p.sp_id !== "sub_002" &&
+                 !p.sp_name.toLowerCase().includes("user vehicle") &&
+                 Number(p.sp_price) !== 800
+        );
+      }
+
+      console.log("[SUB] Filtered plans:", JSON.stringify(filteredPlans));
+
+      setPlans(filteredPlans.length > 0 ? filteredPlans : fetchedPlans);
     } catch {
       // ignore
     } finally {
       setSubChecked(true);
     }
-  }, []);
+  }, [planType]);
 
   useEffect(() => {
     if (visible) {
@@ -59,9 +85,10 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
 
   const hasActiveSub = subChecked && !!activeSub;
 
-  // Auto-continue: if the user already has an active subscription,
-  // skip the modal entirely and fire onSuccess immediately
-  if (visible && hasActiveSub) {
+  // Auto-continue: if the user already has an active subscription AND this is for auction (not sell),
+  // skip the modal entirely and fire onSuccess immediately.
+  // For "sell" planType, we ALWAYS show the payment modal regardless of existing subscription.
+  if (visible && hasActiveSub && planType !== "sell") {
     onSuccess()
     return null
   }
@@ -77,6 +104,9 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
 
   // We assume the uses are fixed to 3 for the UI, or could be fetched if backend supported it.
   const DISPLAY_USES = 3;
+
+  // For sell planType, always show the payment option regardless of activeSub
+  const showPaymentOption = planType === "sell" || !activeSub;
 
   const handleSubscribe = () => {
     if (subscribing) return;
@@ -154,11 +184,15 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
             {/* Header */}
             <View style={styles.header}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.title}>Unlock Vehicle Actions</Text>
+                <Text style={styles.title}>
+                  {planType === "sell" ? "Sell Your Vehicle" : "Unlock Vehicle Actions"}
+                </Text>
                 <Text style={styles.subtitle}>
                   {subChecked && hasActiveSub
                     ? `${activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 'Active'} transactions remaining`
-                    : "3 transactions per day"}
+                    : planType === "sell"
+                      ? "List your vehicle in the marketplace"
+                      : "3 transactions per day"}
                 </Text>
               </View>
               <Pressable onPress={onClose} style={styles.closeBtn}>
@@ -172,7 +206,7 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
                   <ActivityIndicator size="large" color={Colors.primary} />
                   <Text style={{ marginTop: 10, color: Colors.textSecondary }}>Checking subscription...</Text>
                 </View>
-              ) : hasActiveSub ? (
+              ) : hasActiveSub && planType !== "sell" ? (
                 <View>
                   <View style={styles.activeCard}>
                     <LinearGradient
@@ -222,24 +256,29 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
                   <View style={styles.planCard}>
                     <View style={styles.planBadge}>
                       <Ionicons name="star" size={10} color="#fff" />
-                      <Text style={styles.planBadgeText}>SUBSCRIPTION</Text>
+                      <Text style={styles.planBadgeText}>{planType === "sell" ? "SELLER" : "SUBSCRIPTION"}</Text>
                     </View>
                     <Text style={styles.planName}>{defaultPlan.sp_name}</Text>
                     <Text style={styles.planDesc}>
-                      {defaultPlan.sp_description || `Bid or buy up to ${DISPLAY_USES} vehicles per day`}
+                      {defaultPlan.sp_description || (planType === "sell" ? `List your vehicle for ${defaultPlan.sp_duration || 365} days` : `Bid or buy up to ${DISPLAY_USES} vehicles per day`)}
                     </Text>
                     <View style={styles.priceRow}>
                       <Text style={styles.priceCur}>₹</Text>
                       <Text style={styles.priceVal}>{defaultPlan.sp_price ? defaultPlan.sp_price.toLocaleString("en-IN") : "..."}</Text>
-                      <Text style={styles.priceNote}> /day</Text>
+                      <Text style={styles.priceNote}>{planType === "sell" ? ` / ${defaultPlan.sp_duration || 365} days` : " /day"}</Text>
                     </View>
                     <View style={styles.divider} />
-                    {[
+                    {(planType === "sell" ? [
+                      { icon: "car-sport", text: "List your vehicle in the marketplace" },
+                      { icon: "time", text: `Active for ${defaultPlan.sp_duration || 365} days` },
+                      { icon: "shield-checkmark", text: "Secure Razorpay payment" },
+                      { icon: "people", text: "Reach thousands of potential buyers" },
+                    ] : [
                       { icon: "flash", text: `${DISPLAY_USES} vehicle transactions per day (bid or buy)` },
                       { icon: "shield-checkmark", text: "Secure Razorpay payment" },
                       { icon: "time", text: "Daily limit resets every day" },
                       { icon: "car-sport", text: "Access all live auctions & buy now listings" },
-                    ].map(({ icon, text }) => (
+                    ]).map(({ icon, text }) => (
                       <View key={text} style={styles.featureRow}>
                         <View style={styles.featureIcon}>
                           <Ionicons name={icon as any} size={14} color={Colors.primary} />
@@ -252,15 +291,17 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
                   <View style={styles.infoBox}>
                     <Ionicons name="information-circle-outline" size={14} color={Colors.info} />
                     <Text style={styles.infoText}>
-                      Each successful bid or purchase deducts one daily transaction. Your {DISPLAY_USES} daily transactions reset at the start of each day. If you need more than {DISPLAY_USES} in a day, purchase again.
+                      {planType === "sell"
+                        ? `Your vehicle will be visible to buyers for ${defaultPlan.sp_duration || 365} days. Admin will review and approve your listing within 24 hours.`
+                        : `Each successful bid or purchase deducts one daily transaction. Your ${DISPLAY_USES} daily transactions reset at the start of each day. If you need more than ${DISPLAY_USES} in a day, purchase again.`}
                     </Text>
                   </View>
                 </View>
               )}
             </ScrollView>
 
-            {/* Footer — only show Subscribe when user doesn't have active sub and check is complete */}
-            {subChecked && !activeSub && (
+            {/* Footer — show Subscribe button when payment is needed */}
+            {subChecked && showPaymentOption && (
               <View style={styles.footer}>
                 <Pressable
                   style={({ pressed }) => [styles.subBtn, { opacity: (pressed || subscribing) ? 0.85 : 1 }]}
@@ -280,9 +321,9 @@ export function SubscriptionModal({ visible, onClose, onSuccess }: SubscriptionM
                       </>
                     ) : (
                       <>
-                        <Ionicons name="lock-open" size={16} color="#fff" />
+                        <Ionicons name={planType === "sell" ? "car-sport" : "lock-open"} size={16} color="#fff" />
                         <Text style={styles.subBtnText}>
-                          Subscribe — ₹{defaultPlan.sp_price ? defaultPlan.sp_price.toLocaleString("en-IN") : "..."}
+                          {planType === "sell" ? "Pay to List Vehicle" : "Subscribe"} — ₹{defaultPlan.sp_price ? defaultPlan.sp_price.toLocaleString("en-IN") : "..."}
                         </Text>
                       </>
                     )}

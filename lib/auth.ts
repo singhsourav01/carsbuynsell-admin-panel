@@ -3,9 +3,9 @@ import { Platform } from "react-native";
 import { getApiUrl } from "./query-client";
 import { fetch } from "expo/fetch";
 
-const TOKEN_KEY = "autobid_jwt_token";
-const REFRESH_TOKEN_KEY = "autobid_refresh_token";
-const USER_KEY = "autobid_user";
+const TOKEN_KEY = "carsbuynsell_jwt_token";
+const REFRESH_TOKEN_KEY = "carsbuynsell_refresh_token";
+const USER_KEY = "carsbuynsell_user";
 
 export async function storeToken(token: string): Promise<void> {
   if (Platform.OS === "web") {

@@ -157,8 +157,8 @@ export default function LoginScreen() {
           <View style={styles.logoBox}>
             <Ionicons name="car" size={36} color="#fff" />
           </View>
-          <Text style={styles.appTitle}>Cars Buy and Sell</Text>
-          <Text style={styles.appSubtitle}>Driving Deals Funding Dreams..</Text>
+          <Text style={styles.appTitle}>CarsbuyNsell</Text>
+          <Text style={styles.appSubtitle}>by Raj Motors — Driving Deals Funding Dreams..</Text>
         </View>
 
         {/* Form Card */}
@@ -259,7 +259,7 @@ export default function LoginScreen() {
 
         {/* Footer */}
         <Text style={styles.footer}>
-          Powered by <Text style={styles.footerBold}>Raj Motors</Text>
+          Developed by <Text style={styles.footerBold}>Raj Motors</Text>
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>

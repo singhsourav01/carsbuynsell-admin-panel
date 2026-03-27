@@ -35,7 +35,7 @@ export const useAuthStore = create<AuthState>()(
             setLoading: (isLoading) => set({ isLoading }),
         }),
         {
-            name: 'autobid-admin-auth',
+            name: 'carsbuynsell-admin-auth',
             onRehydrateStorage: () => (state) => {
                 state?.setLoading(false)
             },

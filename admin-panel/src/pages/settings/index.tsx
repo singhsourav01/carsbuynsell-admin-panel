@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Save, Globe, Bell, Shield, Palette } from 'lucide-react'
 
 export default function SettingsPage() {
-    const [appName, setAppName] = useState('AutoBid')
+    const [appName, setAppName] = useState('CarsbuyNsell')
     const [tagline, setTagline] = useState('Driving Deals, Funding Dreams')
     const [currency, setCurrency] = useState('INR')
     const [notifEmail, setNotifEmail] = useState(true)

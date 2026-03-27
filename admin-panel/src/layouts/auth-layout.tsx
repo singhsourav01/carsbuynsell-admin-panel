@@ -26,8 +26,8 @@ export function AuthLayout() {
                             <Car className="w-6 h-6 text-white" />
                         </div>
                         <div>
-                            <h1 className="text-white text-xl font-bold tracking-tight">AutoBid</h1>
-                            <p className="text-white/40 text-xs font-medium">Admin Panel</p>
+                            <h1 className="text-white text-xl font-bold tracking-tight">CarsbuyNsell</h1>
+                            <p className="text-white/40 text-xs font-medium">Admin Panel by Raj Motors</p>
                         </div>
                     </div>
 
@@ -78,8 +78,8 @@ export function AuthLayout() {
                         <div className="w-16 h-16 bg-gradient-to-br from-navy to-navy-light rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl">
                             <Car className="w-8 h-8 text-white" />
                         </div>
-                        <h1 className="text-2xl font-bold text-text-primary">AutoBid Admin</h1>
-                        <p className="text-text-secondary text-sm mt-1">Driving Deals, Funding Dreams</p>
+                        <h1 className="text-2xl font-bold text-text-primary">CarsbuyNsell Admin</h1>
+                        <p className="text-text-secondary text-sm mt-1">Driving Deals, Funding Dreams — Raj Motors</p>
                     </div>
 
                     <div className="hidden lg:block mb-8 animate-fade-in-up">

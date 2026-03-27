@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AutoBid — Secure Payment</title>
+  <title>CarsbuyNsell — Secure Payment</title>
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -79,7 +79,7 @@
 </head>
 <body>
   <div class="container">
-    <div class="logo">AutoBid</div>
+    <div class="logo">CarsbuyNsell</div>
     <div class="subtitle">Secure Payment via Razorpay</div>
     <div id="loading">
       <div class="spinner"></div>
@@ -102,7 +102,7 @@
     const amount    = getParam('amount');
     const currency  = getParam('currency') || 'INR';
     const keyId     = getParam('key_id');
-    const userName  = getParam('name')  || 'AutoBid User';
+    const userName  = getParam('name')  || 'CarsbuyNsell User';
     const userEmail = getParam('email') || '';
     const redirectUrl = getParam('redirect_url');
 
@@ -133,7 +133,7 @@
         key: keyId,
         amount: amount,
         currency: currency,
-        name: 'AutoBid',
+        name: 'CarsbuyNsell',
         description: 'Vehicle Access Subscription',
         image: '',
         order_id: orderId,
