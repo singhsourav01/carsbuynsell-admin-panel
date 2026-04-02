@@ -31,10 +31,16 @@ export interface ActiveSubscription {
     sub_status: string;
     sub_remaining_uses?: number;
     remaining_uses?: number;
-    sub_daily_uses_reset_date?: string;
     sub_expires_at: string;
     sub_starts_at: string;
     plan: SubscriptionPlan;
+    // Engagements track active bids/orders per vehicle
+    engagements?: Array<{
+        eng_id: string;
+        eng_listing_id: string;
+        eng_type: 'AUCTION' | 'BUY_NOW';
+        eng_status: 'ACTIVE' | 'CLOSED';
+    }>;
 }
 
 export interface CreateOrderResult {
@@ -56,8 +62,9 @@ export interface RazorpayPaymentResult {
 
 /**
  * GET /user/subscriptions/me
- * Returns the user's active subscription, or null if none/expired/daily-uses-exhausted.
- * Backend checks: status=ACTIVE, expires_at > now, daily uses > 0 (resets to 3 each day)
+ * Returns the user's active subscription, or null if none/expired/all-engagements-used.
+ * Backend checks: status=ACTIVE, expires_at > now, remaining_uses > 0
+ * Votes restore when admin closes auction (not daily reset).
  */
 export async function fetchMySubscription(): Promise<ActiveSubscription | null> {
     try {

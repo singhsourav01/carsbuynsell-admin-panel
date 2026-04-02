@@ -189,10 +189,10 @@ export function SubscriptionModal({ visible, onClose, onSuccess, planType = "auc
                 </Text>
                 <Text style={styles.subtitle}>
                   {subChecked && hasActiveSub
-                    ? `${activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 'Active'} transactions remaining`
+                    ? `${activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 'Active'} engagements available`
                     : planType === "sell"
                       ? "List your vehicle in the marketplace"
-                      : "3 transactions per day"}
+                      : "3 active vehicle engagements at a time"}
                 </Text>
               </View>
               <Pressable onPress={onClose} style={styles.closeBtn}>
@@ -232,7 +232,7 @@ export function SubscriptionModal({ visible, onClose, onSuccess, planType = "auc
                         ))}
                       </View>
                       <Text style={styles.usesLabel}>
-                        {activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 'Active'} transactions left
+                        {activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 'Active'} engagements left
                       </Text>
                     </LinearGradient>
                   </View>

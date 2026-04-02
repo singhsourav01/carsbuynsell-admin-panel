@@ -23,9 +23,20 @@ const activeSubs: Record<string, {
   sub_id: string; sub_status: string; sub_remaining_uses: number;
   sub_expires_at: string; sub_starts_at: string;
   sub_razorpay_order_id: string; sub_razorpay_payment_id: string;
-  sub_daily_uses_reset_date?: string;
   plan: { sp_id: string; sp_name: string; sp_price: number; sp_duration: number; sp_description: string };
 }> = {};
+
+// Engagement tracking: votes locked per vehicle until auction closes
+interface Engagement {
+  eng_id: string;
+  eng_user_id: string;
+  eng_listing_id: string;
+  eng_type: 'AUCTION' | 'BUY_NOW';
+  eng_status: 'ACTIVE' | 'CLOSED';
+  eng_created_at: string;
+  eng_closed_at?: string;
+}
+const engagements: Engagement[] = [];
 
 interface User {
   id: string;
@@ -421,21 +432,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(404).json({ success: false, statusCode: 404, message: "No active subscription found" });
     }
 
-    // Daily reset: if the reset date is before today, reset uses to 3
-    const today = new Date().toISOString().slice(0, 10);
-    const resetDate = sub.sub_daily_uses_reset_date
-      ? new Date(sub.sub_daily_uses_reset_date).toISOString().slice(0, 10)
-      : "";
-    if (resetDate < today) {
-      sub.sub_remaining_uses = 3;
-      sub.sub_daily_uses_reset_date = new Date().toISOString();
-    }
-
+    // Engagement-based model: check if user has available slots (no daily reset)
     if (sub.sub_remaining_uses <= 0) {
-      return res.status(404).json({ success: false, statusCode: 404, message: "No active subscription found" });
+      return res.status(404).json({ success: false, statusCode: 404, message: "All engagement slots are in use. Wait for an auction to close." });
     }
 
-    return res.json({ success: true, statusCode: 200, data: sub, message: "Subscription fetched" });
+    // Include user's active engagements in response
+    const userEngagements = engagements.filter(e => e.eng_user_id === userId && e.eng_status === 'ACTIVE');
+
+    return res.json({ 
+      success: true, 
+      statusCode: 200, 
+      data: { ...sub, engagements: userEngagements }, 
+      message: "Subscription fetched" 
+    });
   });
 
   /** POST /user/subscriptions/create-order — creates a Razorpay order */
@@ -447,17 +457,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(401).json({ success: false, statusCode: 401, message: "Unauthorized" });
     }
 
-    // Block if user already has active subscription with remaining daily uses
+    // Block if user already has active subscription with available engagement slots
     const existing = activeSubs[userId];
     if (existing && existing.sub_remaining_uses > 0) {
-      // Check if daily uses have been reset today — if so, user still has uses left
-      const today = new Date().toISOString().slice(0, 10);
-      const resetDate = existing.sub_daily_uses_reset_date
-        ? new Date(existing.sub_daily_uses_reset_date).toISOString().slice(0, 10)
-        : "";
-      if (resetDate >= today) {
-        return res.status(409).json({ success: false, statusCode: 409, message: "You already have an active subscription" });
-      }
+      return res.status(409).json({ 
+        success: false, 
+        statusCode: 409, 
+        message: "You already have an active subscription with available engagement slots" 
+      });
     }
 
     try {
@@ -529,13 +536,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(404).json({ success: false, statusCode: 404, message: "Pending subscription not found" });
     }
 
-    // Activate subscription
+    // Activate subscription (engagement-based model — no daily reset)
     const now = new Date().toISOString();
     const subscription = {
       sub_id: generateToken(),
       sub_status: "ACTIVE",
-      sub_remaining_uses: 3,
-      sub_daily_uses_reset_date: now,
+      sub_remaining_uses: 3, // 3 active vehicle engagements at a time
       sub_expires_at: pending.expires_at,
       sub_starts_at: now,
       sub_razorpay_order_id: razorpay_order_id,
@@ -545,7 +551,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sp_name: "Vehicle Access Plan",
         sp_price: 10000,
         sp_duration: 365,
-        sp_description: "Bid or buy up to 3 vehicles",
+        sp_description: "Bid or buy up to 3 vehicles at a time",
       },
     };
 
@@ -553,6 +559,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
     delete pendingSubs[razorpay_order_id];
 
     return res.json({ success: true, statusCode: 200, data: subscription, message: "Payment verified & subscription activated" });
+  });
+
+  // ──────────────────────────────────────────────
+  // ENGAGEMENT MANAGEMENT (Mock for development)
+  // ──────────────────────────────────────────────
+
+  /** POST /admin/listings/:id/close-auction — closes auction and restores votes */
+  app.post("/admin/listings/:id/close-auction", (req: Request, res: Response) => {
+    const listingId = req.params.id;
+    const { status } = req.body; // "SOLD" or "EXPIRED"
+
+    // Find all active engagements for this listing
+    const activeEngs = engagements.filter(e => e.eng_listing_id === listingId && e.eng_status === 'ACTIVE');
+    let votesRestored = 0;
+
+    for (const eng of activeEngs) {
+      eng.eng_status = 'CLOSED';
+      eng.eng_closed_at = new Date().toISOString();
+
+      // Restore vote to subscription (only for AUCTION type, not BUY_NOW)
+      if (eng.eng_type === 'AUCTION') {
+        const userSub = Object.values(activeSubs).find(s => 
+          engagements.some(e => e.eng_user_id === eng.eng_user_id)
+        );
+        if (userSub) {
+          userSub.sub_remaining_uses = Math.min(3, userSub.sub_remaining_uses + 1);
+          votesRestored++;
+        }
+      }
+    }
+
+    return res.json({
+      success: true,
+      statusCode: 200,
+      data: { listing_id: listingId, status, engagements_closed: activeEngs.length },
+      message: `Auction closed. ${votesRestored} vote(s) restored.`
+    });
+  });
+
+  /** POST /user/listings/:id/bid — place bid (creates engagement on first bid) */
+  app.post("/user/listings/:id/bid", (req: Request, res: Response) => {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    const userId = token ? sessions[token] : null;
+    const listingId = req.params.id;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, statusCode: 401, message: "Unauthorized" });
+    }
+
+    const sub = activeSubs[userId];
+    if (!sub || sub.sub_remaining_uses <= 0) {
+      return res.status(403).json({ 
+        success: false, 
+        statusCode: 403, 
+        message: "All 3 engagement slots are in use. Wait for an auction to close or purchase a new subscription." 
+      });
+    }
+
+    // Check if user already has engagement for this listing
+    const existingEng = engagements.find(e => e.eng_user_id === userId && e.eng_listing_id === listingId);
+
+    if (!existingEng) {
+      // First bid on this listing — create engagement and decrement vote
+      engagements.push({
+        eng_id: generateToken(),
+        eng_user_id: userId,
+        eng_listing_id: listingId,
+        eng_type: 'AUCTION',
+        eng_status: 'ACTIVE',
+        eng_created_at: new Date().toISOString(),
+      });
+      sub.sub_remaining_uses--;
+    }
+
+    return res.json({
+      success: true,
+      statusCode: 200,
+      data: { bid_id: generateToken(), listing_id: listingId, amount: req.body.amount },
+      message: existingEng ? "Bid placed (same engagement)" : "Bid placed (1 vote used)"
+    });
   });
 
   // ──────────────────────────────────────────────

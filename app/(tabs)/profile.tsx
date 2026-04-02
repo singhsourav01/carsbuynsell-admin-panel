@@ -266,11 +266,11 @@ export default function ProfileScreen() {
                   <Text style={styles.subPlan}>{subscription.plan?.sp_name ?? "STANDARD"}</Text>
                 </View>
                 <Text style={styles.subTitle}>Subscription</Text>
-                <Text style={styles.subExpiry}>3 transactions per day</Text>
+                <Text style={styles.subExpiry}>3 active engagements at a time</Text>
               </View>
               <View style={styles.subCountWrap}>
                 <Text style={styles.subCount}>{subscription.sub_remaining_uses ?? subscription.remaining_uses ?? 0}</Text>
-                <Text style={styles.subCountLabel}>daily{"\n"}uses</Text>
+                <Text style={styles.subCountLabel}>slots{"\n"}left</Text>
               </View>
             </View>
           </Pressable>
