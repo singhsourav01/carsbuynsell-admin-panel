@@ -17,6 +17,9 @@ export default function AuthLayout() {
       <Stack.Screen name="verify-phone" />
       <Stack.Screen name="verify-email" />
       <Stack.Screen name="pending" />
+      <Stack.Screen name="forgot-password" />
+      <Stack.Screen name="verify-reset-otp" />
+      <Stack.Screen name="reset-password" />
     </Stack>
   );
 }

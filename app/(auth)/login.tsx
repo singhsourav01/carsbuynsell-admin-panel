@@ -222,6 +222,11 @@ export default function LoginScreen() {
               <Text style={styles.otpBtnText}>SUBMIT</Text>
             )}
           </Pressable>
+
+          {/* Forgot Password Link */}
+          <Pressable onPress={() => router.push("/(auth)/forgot-password")} hitSlop={8} style={styles.forgotRow}>
+            <Text style={styles.forgotText}>Forgot Password?</Text>
+          </Pressable>
         </View>
 
         {/* Demo Login */}
@@ -377,6 +382,8 @@ const styles = StyleSheet.create({
   },
   demoBtnText: { fontSize: 15, fontFamily: "Urbanist_700Bold", color: Colors.primary },
   demoHint: { fontSize: 12, fontFamily: "Urbanist_400Regular", color: Colors.textMuted, textAlign: "center" },
+  forgotRow: { alignSelf: "center", paddingVertical: 4 },
+  forgotText: { fontSize: 13, fontFamily: "Urbanist_600SemiBold", color: Colors.primary },
   signupRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 12 },
   signupText: { fontSize: 14, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary },
   signupLink: { fontSize: 13, fontFamily: "Urbanist_700Bold", color: Colors.primary, letterSpacing: 0.5 },
