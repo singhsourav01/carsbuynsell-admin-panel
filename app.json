@@ -61,14 +61,14 @@
       "typedRoutes": true,
       "reactCompiler": false
     },
+    "owner": "sourav.singh.01",
     "extra": {
       "router": {
         "origin": "https://replit.com/"
       },
       "eas": {
-        "projectId": "b0cd7628-740e-4d17-8748-0579ad53f356"
+        "projectId": "c94c5bac-2b44-4e97-8ce4-5a3b74f90eaa"
       }
-    },
-    "owner": "souravxox01"
+    }
   }
 }
