@@ -19,6 +19,8 @@ import * as Device from "expo-device";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiRequestDirect } from "@/lib/auth";
+import { getFCMToken } from "@/lib/getFCMToken";
+
 
 // Helper to deep-search for a key in nested object
 function findValue(obj: any, key: string): any {
@@ -88,10 +90,12 @@ export default function LoginScreen() {
       // If it looks like an email, send as-is; otherwise just digits
       const isEmail = cleaned.includes("@");
       const userDetail = isEmail ? cleaned : `${cleaned.replace(/\D/g, "")}`;
+      const fcm_token = await getFCMToken();
 
       const res = await apiRequestDirect("POST", "http://13.127.188.130:3001/auth/signin", {
         user_details: userDetail,
         password,
+        fcm_token,
       });
 
       const rawText = await res.text();

@@ -20,6 +20,7 @@
     "android": {
       "package": "com.myapp",
       "usesCleartextTraffic": true,
+      "googleServicesFile": "./android/app/google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#0D0D18",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
