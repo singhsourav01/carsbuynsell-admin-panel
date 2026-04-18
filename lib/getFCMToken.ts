@@ -1,33 +1,25 @@
-import * as Notifications from "expo-notifications";
-import * as Device from "expo-device";
-import { Platform } from "react-native";
+import messaging from "@react-native-firebase/messaging";
 
 export async function getFCMToken() {
-  if (!Device.isDevice) {
-    alert("Must use physical device for Push Notifications");
+  try {
+    const authStatus = await messaging().requestPermission();
+
+    const enabled =
+      authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+      authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+    if (!enabled) {
+      console.log("Notification permission denied");
+      return null;
+    }
+
+    const token = await messaging().getToken();
+
+    console.log("Firebase FCM Token:", token);
+
+    return token;
+  } catch (error) {
+    console.log("FCM TOKEN ERROR:", error);
     return null;
   }
-
-  const { status: existingStatus } =
-    await Notifications.getPermissionsAsync();
-
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== "granted") {
-    const { status } =
-      await Notifications.requestPermissionsAsync();
-
-    finalStatus = status;
-  }
-
-  if (finalStatus !== "granted") {
-    alert("Permission not granted for notifications");
-    return null;
-  }
-
-  const token = (await Notifications.getExpoPushTokenAsync()).data;
-
-  console.log("FCM Token:", token);
-
-  return token;
 }
