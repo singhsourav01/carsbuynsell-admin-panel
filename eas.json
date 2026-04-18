@@ -6,7 +6,10 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_USE_COMMUNITY_AUTOLINKING": "1"
+      }
     },
     "preview": {
       "distribution": "internal",
@@ -14,10 +17,15 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "13.127.188.130:3002"
+        "EXPO_PUBLIC_DOMAIN": "13.127.188.130:3002",
+        "EXPO_USE_COMMUNITY_AUTOLINKING": "1"
       }
     },
-    "production": {}
+    "production": {
+      "env": {
+        "EXPO_USE_COMMUNITY_AUTOLINKING": "1"
+      }
+    }
   },
   "submit": {
     "production": {}

@@ -1,6 +1,4 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# dependencies
+# Keep android/ in EAS uploads so google-services.json is available.
 node_modules/
 
 # Expo
@@ -11,7 +9,6 @@ expo-env.d.ts
 
 # Native
 ios/
-# android/
 *.orig.*
 *.jks
 *.p8
