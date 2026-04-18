@@ -394,3 +394,4 @@ const styles = StyleSheet.create({
   footer: { fontSize: 13, fontFamily: "Urbanist_400Regular", color: Colors.textMuted, marginTop: "auto" },
   footerBold: { fontFamily: "Urbanist_700Bold", color: Colors.text },
 });
+
