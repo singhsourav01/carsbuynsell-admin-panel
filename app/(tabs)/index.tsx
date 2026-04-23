@@ -130,30 +130,119 @@ export default function HomeScreen() {
   const [categories, setCategories] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
-  const fetchHome = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setIsRefreshing(true);
+const fetchHome = useCallback(async (isRefresh = false) => {
+  if (isRefresh) setIsRefreshing(true);
+
+  try {
+    const res = await apiRequestDirect(
+      "GET",
+      "http://13.127.188.130:3002/user/home"
+    );
+
+    const rawText = await res.text();
+
+    let data: any = {};
     try {
-      const res = await apiRequestDirect("GET", "http://13.127.188.130:3002/user/home");
-      const rawText = await res.text();
-      let data: any = {};
-      try { data = JSON.parse(rawText); } catch { data = {}; }
-      if (res.ok && data?.data) {
-        setFeatured(data.data.featured || []);
-        setRecent(data.data.recent?.data || []);
-        setCategories(sortCategoriesByPreferredSequence(data.data.categories || []));
-      }
-    } catch { /* ignore */ }
-    finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      data = JSON.parse(rawText);
+    } catch {}
+
+    if (res.ok && data?.data) {
+      setFeatured(data.data.featured || []);
+
+      setCategories(
+        sortCategoriesByPreferredSequence(
+          data.data.categories || []
+        )
+      );
     }
-  }, []);
 
-  useEffect(() => { fetchHome(); }, [fetchHome]);
+  } catch {}
 
-  const handleRefresh = useCallback(() => { fetchHome(true); }, [fetchHome]);
+  finally {
+    setIsLoading(false);
+    setIsRefreshing(false);
+  }
+}, []);
 
+const fetchRecentFirstPage = async () => {
+  try {
+    const res = await apiRequestDirect(
+      "GET",
+      "http://13.127.188.130:3002/user/home/recent?page=1"
+    );
+
+    const rawText = await res.text();
+
+    let json: any = {};
+    try {
+      json = JSON.parse(rawText);
+    } catch {}
+
+    if (res.ok && json?.data) {
+      setRecent(json.data.data || []);
+
+      setPage(1);
+
+      setHasNextPage(
+        json.data.pagination?.hasNextPage ?? false
+      );
+    }
+
+  } catch {}
+};
+
+const loadMoreRecent = async () => {
+  if (loadingMore || !hasNextPage) return;
+
+  setLoadingMore(true);
+
+  try {
+    const nextPage = page + 1;
+
+    const res = await apiRequestDirect(
+      "GET",
+      `http://13.127.188.130:3002/user/home/recent?page=${nextPage}`
+    );
+
+    const rawText = await res.text();
+
+    let json: any = {};
+    try {
+      json = JSON.parse(rawText);
+    } catch {}
+
+    if (res.ok && json?.data) {
+      const newListings = json.data.data || [];
+
+      // prevent duplicate append if API returns empty
+      if (newListings.length > 0) {
+        setRecent(prev => [...prev, ...newListings]);
+        setPage(nextPage);
+        setHasNextPage(json.data.pagination?.hasNextPage ?? false);
+      }
+    }
+  } catch {}
+
+  setLoadingMore(false);
+};
+
+useEffect(() => {
+  fetchHome();
+  fetchRecentFirstPage();
+}, [fetchHome]);
+
+const handleRefresh = useCallback(() => {
+  setPage(1);
+  setHasNextPage(true);
+
+  fetchHome(true);
+  fetchRecentFirstPage();
+
+}, [fetchHome]);
   // Filter by search + category
   const query = searchQuery.trim().toLowerCase();
 
@@ -172,143 +261,225 @@ export default function HomeScreen() {
 
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
-  return (
-    <View style={[styles.container, { paddingTop: topPad }]}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={Colors.primary} />}
-        contentContainerStyle={{ paddingBottom: 100 }}
+  const renderCategorySection = () => (
+  <View style={styles.section}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.chipsScroll}
+    >
+      <Pressable
+        onPress={() => setActiveCategory("all")}
+        style={[
+          styles.chip,
+          activeCategory === "all" &&
+            styles.chipActive,
+        ]}
       >
-        {/* Blue Hero Banner */}
-        <View style={styles.heroBanner}>
-          <Text style={styles.heroTitle}>Find your next big profit.</Text>
-          <Text style={styles.heroSubtitle}>Browse verified dealer-exclusive listings.</Text>
-          <View style={[styles.heroSearch, searchFocused && styles.heroSearchFocused]}>
-            <Ionicons name="search-outline" size={18} color={searchFocused ? Colors.primary : "rgba(255,255,255,0.5)"} />
-            <TextInput
-              style={[styles.heroSearchInput, searchFocused && styles.heroSearchInputFocused]}
-              placeholder="Search make, model..."
-              placeholderTextColor={searchFocused ? Colors.textMuted : "rgba(255,255,255,0.5)"}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-              returnKeyType="search"
-            />
-            {searchQuery.length > 0 && (
-              <Pressable onPress={() => setSearchQuery("")}>
-                <Ionicons name="close-circle" size={18} color={searchFocused ? Colors.textMuted : "rgba(255,255,255,0.6)"} />
-              </Pressable>
-            )}
-          </View>
-        </View>
+        <Text
+          style={[
+            styles.chipText,
+            activeCategory === "all" &&
+              styles.chipTextActive,
+          ]}
+        >
+          All
+        </Text>
+      </Pressable>
 
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <View style={styles.quickActionsRow}>
-            {QUICK_ACTIONS.map((action) => (
-              <Pressable
-                key={action.id}
-                onPress={() => { router.push(action.route as any); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                style={({ pressed }) => [styles.quickActionCard, { opacity: pressed ? 0.85 : 1 }]}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: action.bg }]}>
-                  <Ionicons name={action.icon as any} size={22} color={action.color} />
-                </View>
-                <Text style={styles.quickActionLabel}>{action.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
+      {categories.map(cat => (
+        <Pressable
+          key={cat.cat_id}
+          onPress={() =>
+            setActiveCategory(cat.cat_id)
+          }
+          style={[
+            styles.chip,
+            activeCategory === cat.cat_id &&
+              styles.chipActive,
+          ]}
+        >
+          <Text
+            style={[
+              styles.chipText,
+              activeCategory === cat.cat_id &&
+                styles.chipTextActive,
+            ]}
+          >
+            {cat.cat_name}
+          </Text>
+        </Pressable>
+      ))}
+    </ScrollView>
+  </View>
+);
+  const renderFeaturedSection = () => (
+  <View style={styles.section}>
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionTitle}>
+        Featured Listings
+      </Text>
 
-        {/* Featured Listings */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Featured Listings</Text>
-            <Text style={styles.premiumPicks}>PREMIUM PICKS</Text>
-          </View>
-          {isLoading ? (
-            <View style={[styles.featuredCard, { width: width - 48, justifyContent: "center", alignItems: "center", backgroundColor: Colors.card }]}>
-              <ActivityIndicator color={Colors.primary} />
-            </View>
-          ) : featured.length === 0 ? (
-            <View style={[styles.featuredCard, { width: width - 48, justifyContent: "center", alignItems: "center", backgroundColor: Colors.card }]}>
-              <Ionicons name="star-outline" size={32} color={Colors.textMuted} />
-              <Text style={{ fontSize: 14, fontFamily: "Urbanist_500Medium", color: Colors.textMuted, marginTop: 8}}>No featured listings yet</Text>
-            </View>
-          ) : (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.featuredScroll}
-              decelerationRate="fast"
-              snapToInterval={width - 32}
-              snapToAlignment="start"
-              onMomentumScrollEnd={(e) => {
-                const idx = Math.round(e.nativeEvent.contentOffset.x / (width - 32));
-                setFeaturedIdx(idx);
-              }}
-            >
-              {filteredFeatured.map((item, i) => <MemoFeaturedCard key={item.lst_id} item={item} isActive={i === featuredIdx} />)}
-            </ScrollView>
-          )}
-          {/* Dots */}
-          {filteredFeatured.length > 1 && (
-            <View style={styles.dotsRow}>
-              {filteredFeatured.map((_, i) => (
-                <View key={i} style={[styles.dot, i === featuredIdx && styles.dotActive]} />
-              ))}
-            </View>
-          )}
-        </View>
-
-        {/* Category Chips */}
-        <View style={styles.section}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScroll}>
-            <Pressable
-              onPress={() => { setActiveCategory("all"); Haptics.selectionAsync(); }}
-              style={[styles.chip, activeCategory === "all" && styles.chipActive]}
-            >
-              <Text style={[styles.chipText, activeCategory === "all" && styles.chipTextActive]}>All</Text>
-            </Pressable>
-            {categories.map((cat) => (
-              <Pressable
-                key={cat.cat_id}
-                onPress={() => { setActiveCategory(cat.cat_id); Haptics.selectionAsync(); }}
-                style={[styles.chip, activeCategory === cat.cat_id && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, activeCategory === cat.cat_id && styles.chipTextActive]}>{cat.cat_name}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Recent Listings */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recent Listings</Text>
-          {isLoading ? (
-            <ActivityIndicator color={Colors.primary} style={{ marginTop: 20 }} />
-          ) : filteredRecent.length === 0 ? (
-            <View style={{ alignItems: "center", paddingVertical: 32 }}>
-              <Ionicons name="car-outline" size={36} color={Colors.textMuted} />
-              <Text style={{ fontSize: 14, fontFamily: "Urbanist_500Medium", color: Colors.textMuted, marginTop: 8 }}>No listings in this category</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={filteredRecent}
-              renderItem={renderRecent}
-              keyExtractor={keyExtractor}
-              numColumns={2}
-              columnWrapperStyle={styles.recentGrid}
-              scrollEnabled={false}
-              showsVerticalScrollIndicator={false}
-            />
-          )}
-        </View>
-      </ScrollView>
+      <Text style={styles.premiumPicks}>
+        PREMIUM PICKS
+      </Text>
     </View>
-  );
+
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.featuredScroll}
+    >
+      {filteredFeatured.map((item, i) => (
+        <MemoFeaturedCard
+          key={item.lst_id}
+          item={item}
+          isActive={i === featuredIdx}
+        />
+      ))}
+    </ScrollView>
+  </View>
+);
+  const renderHeader = () => (
+  <>
+    {/* HERO SECTION */}
+
+    <View style={styles.heroBanner}>
+      <Text style={styles.heroTitle}>
+        Find your next big profit.
+      </Text>
+
+      <Text style={styles.heroSubtitle}>
+        Browse verified dealer-exclusive listings.
+      </Text>
+
+      <View
+        style={[
+          styles.heroSearch,
+          searchFocused && styles.heroSearchFocused,
+        ]}
+      >
+        <Ionicons
+          name="search-outline"
+          size={18}
+          color={
+            searchFocused
+              ? Colors.primary
+              : "rgba(255,255,255,0.5)"
+          }
+        />
+
+        <TextInput
+          style={[
+            styles.heroSearchInput,
+            searchFocused &&
+              styles.heroSearchInputFocused,
+          ]}
+          placeholder="Search make, model..."
+          placeholderTextColor={
+            searchFocused
+              ? Colors.textMuted
+              : "rgba(255,255,255,0.5)"
+          }
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
+        />
+      </View>
+    </View>
+
+    {/* QUICK ACTIONS */}
+
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>
+        Quick Actions
+      </Text>
+
+      <View style={styles.quickActionsRow}>
+        {QUICK_ACTIONS.map(action => (
+          <Pressable
+            key={action.id}
+            onPress={() => {
+              router.push(action.route as any);
+              Haptics.impactAsync(
+                Haptics.ImpactFeedbackStyle.Light
+              );
+            }}
+            style={({ pressed }) => [
+              styles.quickActionCard,
+              { opacity: pressed ? 0.85 : 1 },
+            ]}
+          >
+            <View
+              style={[
+                styles.quickActionIcon,
+                { backgroundColor: action.bg },
+              ]}
+            >
+              <Ionicons
+                name={action.icon as any}
+                size={22}
+                color={action.color}
+              />
+            </View>
+
+            <Text style={styles.quickActionLabel}>
+              {action.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+
+    {/* FEATURED SECTION */}
+
+    {renderFeaturedSection()}
+
+    {/* CATEGORY SECTION */}
+
+    {renderCategorySection()}
+
+    {/* RECENT HEADER */}
+
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>
+        Recent Listings
+      </Text>
+    </View>
+  </>
+);
+return (
+  <View style={[styles.container, { paddingTop: topPad }]}>
+<FlatList
+  data={filteredRecent}
+  renderItem={renderRecent}
+  keyExtractor={keyExtractor}
+  numColumns={2}
+  columnWrapperStyle={styles.recentGrid}
+  showsVerticalScrollIndicator={false}
+  onEndReached={loadMoreRecent}
+  onEndReachedThreshold={0.4}
+  initialNumToRender={12}
+  maxToRenderPerBatch={10}
+  windowSize={5}
+  refreshControl={
+    <RefreshControl
+      refreshing={isRefreshing}
+      onRefresh={handleRefresh}
+      tintColor={Colors.primary}
+    />
+  }
+  ListHeaderComponent={renderHeader()}
+  ListFooterComponent={
+    loadingMore ? (
+      <ActivityIndicator style={{ marginVertical: 20 }} />
+    ) : null
+  }
+  ListFooterComponentStyle={{ paddingBottom: 40 }}
+/>
+  </View>
+);
 }
 
 const styles = StyleSheet.create({
