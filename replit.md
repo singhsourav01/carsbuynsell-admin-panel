@@ -60,7 +60,7 @@ server/
 ## Signup Flow (4 steps)
 1. **Register** (`/register`) — name, phone, email, password → POST /api/auth/register
 2. **Verify Phone** (`/verify-phone`) — 6-digit OTP, demo OTP: **123456** → POST /api/auth/verify-phone
-3. **Verify Email** (`/verify-email`) — 6-digit OTP, demo OTP: **654321** → POST /api/auth/verify-email
+3. **Verify Email** (`/verify-email`) — 6-digit OTP, demo OTP: **123456** → POST /api/auth/verify-email
 4. **Pending** (`/pending`) — waits for admin approval, shows checklist
 
 ## Login Flow
@@ -70,7 +70,7 @@ server/
 ## API Routes
 - `POST /api/auth/register` — { fullName, phone, email, password } → { userId }
 - `POST /api/auth/verify-phone` — { userId, otp: "123456" } → phone verified
-- `POST /api/auth/verify-email` — { userId, otp: "654321" } → email verified, PENDING_APPROVAL
+- `POST /api/auth/verify-email` — { userId, otp: "123456" } → email verified, PENDING_APPROVAL
 - `POST /api/auth/resend-otp` — { userId, type: "phone"|"email" }
 - `POST /api/auth/request-otp` — { phone } → { userId } (login OTP)
 - `POST /api/auth/verify-phone-otp` — { userId, otp } → { token, user }

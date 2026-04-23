@@ -132,7 +132,6 @@ export default function VerifyEmailScreen() {
           <View style={styles.stepLine} />
           <StepItem n="3" text="Email OTP" state="active" />
           <View style={styles.stepLine} />
-          <StepItem n="4" text="Approval" state="pending" />
         </View>
 
         {/* OTP Card */}
@@ -182,7 +181,7 @@ export default function VerifyEmailScreen() {
           {/* Demo hint */}
           <View style={styles.hintBox}>
             <Ionicons name="information-circle-outline" size={13} color={Colors.info} />
-            <Text style={styles.hintText}>Demo OTP: <Text style={styles.hintCode}>654321</Text></Text>
+            <Text style={styles.hintText}>Demo OTP: <Text style={styles.hintCode}>123456</Text></Text>
           </View>
 
           <Pressable

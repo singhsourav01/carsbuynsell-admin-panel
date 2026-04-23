@@ -108,10 +108,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       emailVerified: false,
     };
 
-    // For demo, OTPs are fixed (123456 for phone, 654321 for email)
+    // For demo, OTPs are fixed (123456 for phone, 123456 for email)
     // In production these would be sent via SMS/email
     const phoneOtp = "123456";
-    const emailOtp = "654321";
+    const emailOtp = "123456";
     otpStore[id] = { phoneOtp, emailOtp };
 
     console.log(`[SIGNUP] New user: ${fullName} | Phone OTP: ${phoneOtp} | Email OTP: ${emailOtp}`);
@@ -160,13 +160,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
     if (!user.phoneVerified) {
       return res.status(400).json({ success: false, message: "Please verify your phone first" });
-    }
+    } 
 
     const stored = otpStore[userId];
     // Accept fixed demo OTP or actual stored OTP
-    const isValid = otp === "654321" || otp === "123456" || otp === stored?.emailOtp;
+    const isValid = otp === "123456" || otp === "123456" || otp === stored?.emailOtp;
     if (!isValid) {
-      return res.status(400).json({ success: false, message: "Invalid OTP. Use 654321 for demo." });
+      return res.status(400).json({ success: false, message: "Invalid OTP. Use 123456 for demo." });
     }
 
     user.emailVerified = true;
@@ -192,10 +192,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
     if (!otpStore[userId]) {
-      otpStore[userId] = { phoneOtp: "123456", emailOtp: "654321" };
+      otpStore[userId] = { phoneOtp: "123456", emailOtp: "123456" };
     }
 
-    const hint = type === "email" ? "654321" : "123456";
+    const hint = type === "email" ? "123456" : "123456";
     res.json({
       success: true,
       data: { message: `OTP resent. Demo OTP: ${hint}` },
@@ -224,7 +224,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (user.status === "REJECTED") return res.status(403).json({ success: false, message: "Account has been rejected." });
     if (user.status === "BLOCKED") return res.status(403).json({ success: false, message: "Account has been blocked." });
 
-    if (!otpStore[user.id]) otpStore[user.id] = { phoneOtp: "123456", emailOtp: "654321" };
+    if (!otpStore[user.id]) otpStore[user.id] = { phoneOtp: "123456", emailOtp: "123456" };
 
     res.json({ success: true, data: { userId: user.id, phone } });
   });

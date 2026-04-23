@@ -107,7 +107,6 @@ export default function VerifyPhoneScreen() {
           <View style={styles.stepLine} />
           <StepItem n="3" text="Email OTP" state="pending" />
           <View style={styles.stepLine} />
-          <StepItem n="4" text="Approval" state="pending" />
         </View>
 
         {/* OTP Card */}
