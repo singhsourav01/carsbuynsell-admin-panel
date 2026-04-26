@@ -1,247 +1,289 @@
 import React from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet } from "react-native";
+import {
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  StyleSheet,
+  Linking,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { Colors } from "@/constants/colors";
 
-const TERMS_SECTIONS = [
-  {
-    title: "Acceptance of Terms",
-    content: `By accessing or using the CarsBuynSell mobile application, you agree to be bound by these Terms and Conditions. If you do not agree to these terms, please do not use our services.
-
-These terms apply to all users, including buyers, sellers, and visitors.`,
-  },
-  {
-    title: "Eligibility",
-    content: `To use our services, you must:
-
-• Be at least 18 years of age
-• Be a registered dealer or authorized representative
-• Provide accurate and complete registration information
-• Maintain the security of your account credentials
-• Have a valid business registration (for sellers)
-
-We reserve the right to refuse service to anyone at our discretion.`,
-  },
-  {
-    title: "Subscription & Transactions",
-    content: `Our subscription model works as follows:
-
-• A subscription allows 3 transactions per day (bids or purchases)
-• Daily transaction limits reset at midnight IST
-• Subscription fees are non-refundable once activated
-• You may repurchase a subscription if daily limits are exhausted
-• All bids are binding commitments to purchase
-
-Transaction fees and applicable taxes are clearly displayed before confirmation.`,
-  },
-  {
-    title: "Bidding Rules",
-    content: `When participating in auctions:
-
-• All bids are final and cannot be retracted
-• Bid amounts must exceed the current highest bid
-• Winning bidders are obligated to complete the purchase
-• Failure to honor winning bids may result in account suspension
-• Bid sniping and collusion are strictly prohibited
-
-We monitor all bidding activity for fraudulent behavior.`,
-  },
-  {
-    title: "Buy Now Transactions",
-    content: `For immediate purchases:
-
-• Listed prices are final and non-negotiable
-• Payment must be completed within the specified timeframe
-• Ownership transfer occurs after full payment verification
-• Vehicle inspection is the buyer's responsibility
-• We facilitate but do not guarantee transaction completion
-
-All sales are subject to vehicle availability.`,
-  },
-  {
-    title: "Seller Responsibilities",
-    content: `Sellers on our platform must:
-
-• Provide accurate vehicle descriptions and photos
-• Disclose any known defects or issues
-• Set reasonable and honest pricing
-• Respond to buyer inquiries promptly
-• Complete ownership transfer upon payment
-• Comply with all applicable laws and regulations
-
-Misrepresentation may result in permanent account termination.`,
-  },
-  {
-    title: "Prohibited Activities",
-    content: `The following activities are strictly prohibited:
-
-• Fraudulent listings or transactions
-• Manipulating bids or prices
-• Creating multiple accounts
-• Sharing account credentials
-• Harassing other users
-• Circumventing platform fees
-• Using automated bidding tools
-• Money laundering or illegal transactions
-
-Violations will result in immediate account suspension.`,
-  },
-  {
-    title: "Limitation of Liability",
-    content: `CarsBuynSell:
-
-• Acts as an intermediary platform only
-• Does not own, inspect, or warrant vehicles
-• Is not responsible for transaction disputes
-• Does not guarantee vehicle condition or authenticity
-• Is not liable for indirect or consequential damages
-
-Maximum liability is limited to fees paid for our services.`,
-  },
-  {
-    title: "Dispute Resolution",
-    content: `In case of disputes:
-
-• Contact our support team within 48 hours
-• Provide all relevant documentation
-• Allow 7-14 business days for investigation
-• Accept our mediation decision as preliminary
-• Pursue arbitration for unresolved matters
-
-Disputes are governed by the laws of India, with jurisdiction in appropriate courts.`,
-  },
-  {
-    title: "Modifications",
-    content: `We reserve the right to:
-
-• Modify these terms at any time
-• Change pricing and subscription models
-• Add or remove features
-• Suspend or terminate accounts
-• Update platform policies
-
-Continued use after modifications constitutes acceptance.`,
-  },
-];
-
-export default function TermsScreen() {
+export default function HelpSupportScreen() {
   const insets = useSafeAreaInsets();
 
+  const PHONE = "+919988776655";
+  const EMAIL = "support@rajmotors.com";
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color={Colors.text} />
+    <View style={styles.overlay}>
+      <View
+        style={[
+          styles.modalContainer,
+          { paddingBottom: insets.bottom + 12 },
+        ]}
+      >
+        {/* Close Button */}
+        <Pressable
+          style={styles.closeBtn}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="close" size={22} color={Colors.textMuted} />
         </Pressable>
-        <Text style={styles.headerTitle}>Terms & Conditions</Text>
-        <View style={{ width: 40 }} />
-      </View>
 
-      {/* <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <View style={styles.titleCard}>
-          <View style={styles.iconWrap}>
-            <Ionicons name="document-text" size={28} color={Colors.primary} />
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.content}
+        >
+          {/* Title */}
+          <Text style={styles.title}>Help & Support</Text>
+
+          {/* Icon */}
+          <View style={styles.iconCircle}>
+            <Feather name="headphones" size={34} color={Colors.primary} />
           </View>
-          <Text style={styles.titleText}>Terms & Conditions</Text>
-          <Text style={styles.updateDate}>Last Updated: March 2024</Text>
-        </View>
 
-        <View style={styles.introCard}>
-          <Text style={styles.introText}>
-            Please read these Terms and Conditions carefully before using the CarsBuynSell platform. These terms govern your use of our services and constitute a legally binding agreement.
+          {/* Heading */}
+          <Text style={styles.heading}>
+            Need assistance?
           </Text>
-        </View>
 
-        {TERMS_SECTIONS.map((section, idx) => (
-          <View key={idx} style={styles.sectionCard}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionNumber}>{String(idx + 1).padStart(2, "0")}</Text>
-              <Text style={styles.sectionTitle}>{section.title}</Text>
+          <Text style={styles.subHeading}>
+            Our support team is available Mon–Sat, 10 AM to 7 PM IST.
+          </Text>
+
+          {/* Email Card */}
+          <Pressable
+            style={styles.card}
+            onPress={() => Linking.openURL(`mailto:${EMAIL}`)}
+          >
+            <View style={styles.cardLeft}>
+              <Ionicons name="mail" size={20} color={Colors.primary} />
+              <View>
+                <Text style={styles.cardLabel}>
+                  EMAIL SUPPORT
+                </Text>
+                <Text style={styles.cardValue}>
+                  {EMAIL}
+                </Text>
+              </View>
             </View>
-            <Text style={styles.sectionContent}>{section.content}</Text>
+
+            <Ionicons
+              name="copy-outline"
+              size={18}
+              color={Colors.primary}
+            />
+          </Pressable>
+
+          {/* Call Card */}
+          <Pressable
+            style={styles.card}
+            onPress={() => Linking.openURL(`tel:${PHONE}`)}
+          >
+            <View style={styles.cardLeft}>
+              <Ionicons name="call" size={20} color={Colors.primary} />
+
+              <View>
+                <Text style={styles.cardLabel}>
+                  CALL SUPPORT
+                </Text>
+
+                <Text style={styles.cardValue}>
+                  {PHONE}
+                </Text>
+              </View>
+            </View>
+
+            <Ionicons
+              name="copy-outline"
+              size={18}
+              color={Colors.primary}
+            />
+          </Pressable>
+
+          {/* WhatsApp Card */}
+          <Pressable
+            style={styles.card}
+            onPress={() =>
+              Linking.openURL(`https://wa.me/${PHONE.replace("+", "")}`)
+            }
+          >
+            <View style={styles.cardLeft}>
+              <Ionicons name="logo-whatsapp" size={20} color="#22C55E" />
+
+              <View>
+                <Text style={styles.cardLabel}>
+                  WHATSAPP
+                </Text>
+
+                <Text style={styles.cardValue}>
+                  {PHONE}
+                </Text>
+              </View>
+            </View>
+
+            <Ionicons
+              name="copy-outline"
+              size={18}
+              color={Colors.primary}
+            />
+          </Pressable>
+
+          {/* Warning Box */}
+          <View style={styles.warningBox}>
+            <Ionicons
+              name="information-circle"
+              size={18}
+              color="#92400E"
+            />
+
+            <Text style={styles.warningText}>
+              For faster resolution, please include your Dealer ID in your messages.
+            </Text>
           </View>
-        ))}
+        </ScrollView>
 
-        <View style={styles.footerCard}>
-          <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
-          <Text style={styles.footerText}>
-            By using our services, you acknowledge that you have read, understood, and agree to these Terms and Conditions.
+        {/* CTA */}
+        <Pressable
+          style={styles.button}
+          onPress={() => router.back()}
+        >
+          <Text style={styles.buttonText}>
+            GOT IT
           </Text>
-        </View>
-
-        <View style={{ height: 40 }} />
-      </ScrollView> */}
+        </Pressable>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
   },
-  backBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", backgroundColor: Colors.card, borderRadius: 12 },
-  headerTitle: { fontSize: 18, fontFamily: "Urbanist_700Bold", color: Colors.text },
-  content: { paddingHorizontal: 16, paddingBottom: 40 },
-  titleCard: {
+
+  modalContainer: {
     backgroundColor: Colors.card,
-    borderRadius: 20,
-    padding: 24,
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    maxHeight: "88%",
   },
-  iconWrap: {
-    width: 60,
-    height: 60,
-    borderRadius: 16,
+
+  closeBtn: {
+    position: "absolute",
+    right: 18,
+    top: 18,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.background,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  content: {
+    paddingTop: 20,
+    paddingBottom: 20,
+  },
+
+  title: {
+    fontSize: 22,
+    fontFamily: "Urbanist_700Bold",
+    color: Colors.text,
+    marginBottom: 10,
+  },
+
+  iconCircle: {
+    width: 90,
+    height: 90,
+    borderRadius: 50,
     backgroundColor: Colors.primaryLight,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
+    alignSelf: "center",
+    marginVertical: 18,
   },
-  titleText: { fontSize: 22, fontFamily: "Urbanist_700Bold", color: Colors.text },
-  updateDate: { fontSize: 13, fontFamily: "Urbanist_400Regular", color: Colors.textMuted },
-  introCard: {
+
+  heading: {
+    textAlign: "center",
+    fontSize: 20,
+    fontFamily: "Urbanist_700Bold",
+    color: Colors.text,
+  },
+
+  subHeading: {
+    textAlign: "center",
+    fontSize: 14,
+    marginTop: 6,
+    marginBottom: 22,
+    fontFamily: "Urbanist_400Regular",
+    color: Colors.textSecondary,
+  },
+
+  card: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: Colors.background,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+  },
+
+  cardLeft: {
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "center",
+  },
+
+  cardLabel: {
+    fontSize: 12,
+    fontFamily: "Urbanist_600SemiBold",
+    color: Colors.textMuted,
+  },
+
+  cardValue: {
+    fontSize: 15,
+    fontFamily: "Urbanist_700Bold",
+    color: Colors.text,
+  },
+
+  warningBox: {
+    flexDirection: "row",
+    gap: 10,
     backgroundColor: "#FEF3C7",
     borderRadius: 16,
     padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "#F59E0B",
-  },
-  introText: { fontSize: 14, fontFamily: "Urbanist_500Medium", color: Colors.text, lineHeight: 22 },
-  sectionCard: {
-    backgroundColor: Colors.card,
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: Colors.cardBorder,
-  },
-  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
-  sectionNumber: { fontSize: 12, fontFamily: "Urbanist_700Bold", color: Colors.primary },
-  sectionTitle: { fontSize: 16, fontFamily: "Urbanist_700Bold", color: Colors.text, flex: 1 },
-  sectionContent: { fontSize: 13, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary, lineHeight: 22 },
-  footerCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    backgroundColor: "#D1FAE5",
-    borderRadius: 16,
-    padding: 16,
     marginTop: 8,
-    borderWidth: 1,
-    borderColor: Colors.success,
   },
-  footerText: { flex: 1, fontSize: 13, fontFamily: "Urbanist_500Medium", color: Colors.text, lineHeight: 20 },
+
+  warningText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Urbanist_500Medium",
+    color: "#92400E",
+  },
+
+  button: {
+    backgroundColor: Colors.primary,
+    height: 54,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  buttonText: {
+    fontSize: 15,
+    fontFamily: "Urbanist_700Bold",
+    color: "#fff",
+    letterSpacing: 1,
+  },
 });

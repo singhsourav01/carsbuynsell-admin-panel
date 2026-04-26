@@ -201,7 +201,7 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
                 </View>
                 <View style={sellS.feeNotice}>
                   <Ionicons name="card-outline" size={16} color={Colors.primary} />
-                  <Text style={sellS.feeNoticeText}>₹{SELL_VEHICLE_FEE} listing fee • 365 days visibility</Text>
+                  <Text style={sellS.feeNoticeText}>₹{SELL_VEHICLE_FEE} listing fee</Text>
                 </View>
                 <View style={sellS.notice}>
                   <Ionicons name="time-outline" size={15} color={Colors.warning} />
@@ -434,7 +434,7 @@ export default function ProfileScreen() {
           <View style={styles.sellCtaIcon}><Ionicons name="car-sport" size={20} color={Colors.primary} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.sellCtaTitle}>Sell Your Vehicle</Text>
-            <Text style={styles.sellCtaSub}>₹800 listing fee • 365 days visibility</Text>
+            <Text style={styles.sellCtaSub}>₹800 listing fee</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
         </Pressable>
