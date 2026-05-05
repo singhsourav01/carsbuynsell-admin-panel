@@ -57,7 +57,7 @@ export default function ResetPasswordScreen() {
     try {
       const res = await apiRequestDirect(
         "POST",
-        "http://13.127.188.130:3002/user/reset-password",
+        "http://65.2.10.30:3002/user/reset-password",
         {
           reset_token: resetToken,
           new_password: newPassword,

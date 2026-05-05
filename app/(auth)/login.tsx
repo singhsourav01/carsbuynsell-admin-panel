@@ -65,7 +65,7 @@ export default function LoginScreen() {
       };
       console.log("=== DEVICE REGISTRATION PAYLOAD ===", JSON.stringify(payload, null, 2));
 
-      const res = await apiRequestDirect("POST", "http://13.127.188.130:3002/user/user-device", payload);
+      const res = await apiRequestDirect("POST", "http://65.2.10.30:3002/user/user-device", payload);
       const resText = await res.text();
       console.log("=== DEVICE REGISTRATION RESPONSE ===", res.status, resText);
     } catch (err: any) {
@@ -92,7 +92,7 @@ export default function LoginScreen() {
       const userDetail = isEmail ? cleaned : `${cleaned.replace(/\D/g, "")}`;
       const fcm_token = await getFCMToken();
 
-      const res = await apiRequestDirect("POST", "http://13.127.188.130:3001/auth/signin", {
+      const res = await apiRequestDirect("POST", "http://65.2.10.30:3001/auth/signin", {
         user_details: userDetail,
         password,
         fcm_token,

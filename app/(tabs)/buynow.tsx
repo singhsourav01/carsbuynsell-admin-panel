@@ -97,7 +97,7 @@ export default function BuyNowScreen() {
     try {
       const res = await apiRequestDirect(
         "POST",
-        `http://13.127.188.130:3002/user/listings/${item.lst_id}/buy`,
+        `http://65.2.10.30:3002/user/listings/${item.lst_id}/buy`,
         {},
         true,
       );
@@ -156,7 +156,7 @@ export default function BuyNowScreen() {
 
   const fetchCategories = useCallback(async () => {
     try {
-      const res = await apiRequestDirect("GET", "http://13.127.188.130:3002/user/home");
+      const res = await apiRequestDirect("GET", "http://65.2.10.30:3002/user/home");
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
@@ -181,7 +181,7 @@ export default function BuyNowScreen() {
     if (appliedFilters.ownership.length > 0) params.set("ownership", appliedFilters.ownership.join(","));
 
     try {
-      const res = await apiRequestDirect("GET", `http://13.127.188.130:3002/user/listings?${params.toString()}`);
+      const res = await apiRequestDirect("GET", `http://65.2.10.30:3002/user/listings?${params.toString()}`);
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }

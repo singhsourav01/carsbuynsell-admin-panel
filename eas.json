@@ -17,7 +17,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "13.127.188.130:3002",
+        "EXPO_PUBLIC_DOMAIN": "65.2.10.30:3002",
         "EXPO_USE_COMMUNITY_AUTOLINKING": "1"
       }
     },

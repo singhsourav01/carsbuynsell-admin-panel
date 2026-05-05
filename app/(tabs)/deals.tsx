@@ -135,7 +135,7 @@ export default function DealsScreen() {
     try {
       const res = await apiRequestDirect(
         "GET",
-        "http://13.127.188.130:3002/user/users/me/order-history",
+        "http://65.2.10.30:3002/user/users/me/order-history",
         undefined,
         true,
       );

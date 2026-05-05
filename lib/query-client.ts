@@ -7,7 +7,7 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
  */
 export function getApiUrl(): string {
   // Use the live server as the default environment if the variable is missing
-  let host = process.env.EXPO_PUBLIC_DOMAIN || "13.127.188.130:3002";
+  let host = process.env.EXPO_PUBLIC_DOMAIN || "65.2.10.30:3002";
 
   try {
     // Determine protocol: Use HTTP for raw IP addresses or localhost, HTTPS for domains
@@ -18,7 +18,7 @@ export function getApiUrl(): string {
     return url.href;
   } catch (e) {
     // Final safety fallback to ensure the app never crashes on startup
-    return "http://13.127.188.130:3002/";
+    return "http://65.2.10.30:3002/";
   }
 }
 

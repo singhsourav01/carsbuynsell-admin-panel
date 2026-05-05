@@ -54,7 +54,7 @@ export default function ListingDetailScreen() {
         setError(null);
         try {
             console.log("[DEBUG] Fetching listing details...");
-            const listingRes = await apiRequestDirect("GET", `http://13.127.188.130:3002/user/listings/${id}`);
+            const listingRes = await apiRequestDirect("GET", `http://65.2.10.30:3002/user/listings/${id}`);
             console.log("[DEBUG] Listing response status:", listingRes.status);
 
             const listingRaw = await listingRes.text();
@@ -74,7 +74,7 @@ export default function ListingDetailScreen() {
                 if (listingData.data.lst_type === "AUCTION") {
                     console.log("[DEBUG] Fetching bids for auction...");
                     try {
-                        const bidsRes = await apiRequestDirect("GET", `http://13.127.188.130:3002/user/listings/${id}/bids`, undefined, true);
+                        const bidsRes = await apiRequestDirect("GET", `http://65.2.10.30:3002/user/listings/${id}/bids`, undefined, true);
                         console.log("[DEBUG] Bids response status:", bidsRes.status);
                         if (bidsRes.ok) {
                             const bidsRaw = await bidsRes.text();
@@ -115,7 +115,7 @@ export default function ListingDetailScreen() {
         try {
             const res = await apiRequestDirect(
                 "POST",
-                `http://13.127.188.130:3002/user/listings/${id}/buy`,
+                `http://65.2.10.30:3002/user/listings/${id}/buy`,
                 {},
                 true,
             );
@@ -183,7 +183,7 @@ export default function ListingDetailScreen() {
         try {
             const res = await apiRequestDirect(
                 "POST",
-                `http://13.127.188.130:3002/user/listings/${id}/bid`,
+                `http://65.2.10.30:3002/user/listings/${id}/bid`,
                 { bid_amount: bidVal },
                 true,
             );

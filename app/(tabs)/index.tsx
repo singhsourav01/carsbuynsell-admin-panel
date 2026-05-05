@@ -140,7 +140,7 @@ const fetchHome = useCallback(async (isRefresh = false) => {
   try {
     const res = await apiRequestDirect(
       "GET",
-      "http://13.127.188.130:3002/user/home"
+      "http://65.2.10.30:3002/user/home"
     );
 
     const rawText = await res.text();
@@ -172,7 +172,7 @@ const fetchRecentFirstPage = async () => {
   try {
     const res = await apiRequestDirect(
       "GET",
-      "http://13.127.188.130:3002/user/home/recent?page=1"
+      "http://65.2.10.30:3002/user/home/recent?page=1"
     );
 
     const rawText = await res.text();
@@ -205,7 +205,7 @@ const loadMoreRecent = async () => {
 
     const res = await apiRequestDirect(
       "GET",
-      `http://13.127.188.130:3002/user/home/recent?page=${nextPage}`
+      `http://65.2.10.30:3002/user/home/recent?page=${nextPage}`
     );
 
     const rawText = await res.text();

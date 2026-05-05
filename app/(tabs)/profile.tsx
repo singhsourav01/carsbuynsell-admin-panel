@@ -52,7 +52,7 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
     setLoading(true);
     try {
       // Create Razorpay order for ₹800 listing fee
-      const res = await apiRequestDirect("POST", "http://13.127.188.130:3002/user/subscriptions/create-order", {
+      const res = await apiRequestDirect("POST", "http://65.2.10.30:3002/user/subscriptions/create-order", {
         plan_id: "sub_002", // Sell vehicle plan ID
         amount: SELL_VEHICLE_FEE * 100, // Amount in paise
       }, true);
@@ -89,7 +89,7 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
     setLoading(true);
     try {
       // First verify the payment
-      const verifyRes = await apiRequestDirect("POST", "http://13.127.188.130:3002/user/subscriptions/verify-payment", {
+      const verifyRes = await apiRequestDirect("POST", "http://65.2.10.30:3002/user/subscriptions/verify-payment", {
         razorpay_order_id: paymentResult.razorpay_order_id,
         razorpay_payment_id: paymentResult.razorpay_payment_id,
         razorpay_signature: paymentResult.razorpay_signature,
@@ -109,7 +109,7 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
       console.log("[SELL] Payment verified, submitting vehicle data...");
       
       // Now submit the vehicle record
-      const res = await apiRequestDirect("POST", "http://13.127.188.130:3002/user/vehicle-records", {
+      const res = await apiRequestDirect("POST", "http://65.2.10.30:3002/user/vehicle-records", {
         uvr_title: pendingSubmission.title,
         uvr_description: pendingSubmission.description,
         uvr_category: pendingSubmission.category,
@@ -268,10 +268,10 @@ export default function ProfileScreen() {
 
       // Try user-specific endpoint if we have user ID
       if (userId) {
-        res = await apiRequestDirect("GET", `http://13.127.188.130:3002/user/users/${userId}`, undefined, false);
+        res = await apiRequestDirect("GET", `http://65.2.10.30:3002/user/users/${userId}`, undefined, false);
       } else {
         // Fallback to authenticated profile endpoint
-        res = await apiRequestDirect("GET", "http://13.127.188.130:3002/user/users-profile", undefined, true);
+        res = await apiRequestDirect("GET", "http://65.2.10.30:3002/user/users-profile", undefined, true);
       }
 
       const rawText = await res.text();
@@ -320,7 +320,7 @@ export default function ProfileScreen() {
     if (!editName.trim()) return;
     setSaving(true);
     try {
-      const res = await apiRequestDirect("PUT", "http://13.127.188.130:3002/user/users-profile", {
+      const res = await apiRequestDirect("PUT", "http://65.2.10.30:3002/user/users-profile", {
         full_name: editName.trim(),
         email: editEmail.trim(),
         phone: editPhone.trim(),

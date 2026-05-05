@@ -54,7 +54,7 @@ function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: any | 
     lastBidTime.current = now;
     setLoading(true);
     try {
-      const res = await apiRequestDirect("POST", `http://13.127.188.130:3002/user/listings/${auction.lst_id}/bid`, { bid_amount: amount }, true);
+      const res = await apiRequestDirect("POST", `http://65.2.10.30:3002/user/listings/${auction.lst_id}/bid`, { bid_amount: amount }, true);
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
@@ -200,7 +200,7 @@ export default function LiveScreen() {
 
   const fetchCategories = useCallback(async () => {
     try {
-      const res = await apiRequestDirect("GET", "http://13.127.188.130:3002/user/home");
+      const res = await apiRequestDirect("GET", "http://65.2.10.30:3002/user/home");
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
@@ -225,7 +225,7 @@ export default function LiveScreen() {
     if (appliedFilters.ownership.length > 0) params.set("ownership", appliedFilters.ownership.join(","));
 
     try {
-      const res = await apiRequestDirect("GET", `http://13.127.188.130:3002/user/listings?${params.toString()}`);
+      const res = await apiRequestDirect("GET", `http://65.2.10.30:3002/user/listings?${params.toString()}`);
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }

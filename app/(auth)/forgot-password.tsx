@@ -55,7 +55,7 @@ export default function ForgotPasswordScreen() {
 
       const res = await apiRequestDirect(
         "POST",
-        "http://13.127.188.130:3002/user/forgot-password",
+        "http://65.2.10.30:3002/user/forgot-password",
         payload
       );
 
