@@ -19,8 +19,8 @@ import { apiRequestDirect } from "@/lib/auth";
 
 export default function ResetPasswordScreen() {
   const insets = useSafeAreaInsets();
-  const { resetToken, identifier, type } = useLocalSearchParams<{
-    resetToken: string;
+
+  const { identifier, type } = useLocalSearchParams<{
     identifier: string;
     type: string;
   }>();
@@ -36,15 +36,26 @@ export default function ResetPasswordScreen() {
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
   const handleResetPassword = async () => {
-    // Validation
+    if (!identifier || !type) {
+      setError("Reset session missing. Please verify OTP again.");
+      return;
+    }
+
     if (!newPassword) {
       setError("Please enter a new password");
       return;
     }
+
+    if (!confirmPassword) {
+      setError("Please confirm your new password");
+      return;
+    }
+
     if (newPassword.length < 6) {
       setError("Password must be at least 6 characters");
       return;
     }
+
     if (newPassword !== confirmPassword) {
       setError("Passwords do not match");
       return;
@@ -55,38 +66,54 @@ export default function ResetPasswordScreen() {
     setLoading(true);
 
     try {
+      const isEmail = type === "email";
+
+      const payload = isEmail
+        ? {
+            email: String(identifier).toLowerCase(),
+            new_password: newPassword,
+          }
+        : {
+            phone: String(identifier).replace(/\D/g, ""),
+            new_password: newPassword,
+          };
+
       const res = await apiRequestDirect(
         "POST",
         "http://65.2.10.30:3002/user/reset-password",
-        {
-          reset_token: resetToken,
-          new_password: newPassword,
-        }
+        payload
       );
 
       const rawText = await res.text();
+
       let data: any = {};
+
       try {
         data = JSON.parse(rawText);
       } catch {
         data = { message: rawText };
       }
 
-      if (res.ok) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setSuccess(data?.message || "Password reset successfully!");
+      if (!res.ok || data?.success === false) {
+        const apiMessage =
+          data?.message ||
+          data?.error ||
+          "Failed to reset password. Please try again.";
 
-        // Navigate to login after success
-        setTimeout(() => {
-          router.replace("/(auth)/login");
-        }, 1500);
-      } else {
-        const apiMessage = data?.message || data?.error || "Failed to reset password. Please try again.";
         setError(apiMessage);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
       }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setSuccess(data?.message || "Password reset successfully!");
+
+      setTimeout(() => {
+        router.replace("/(auth)/login");
+      }, 1500);
     } catch (err: any) {
       setError(err?.message || "Network error. Please check your connection.");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setLoading(false);
     }
@@ -98,7 +125,10 @@ export default function ResetPasswordScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView
-        contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 24 }]}
+        contentContainerStyle={[
+          styles.container,
+          { paddingBottom: insets.bottom + 24 },
+        ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -118,14 +148,22 @@ export default function ResetPasswordScreen() {
 
           {success ? (
             <View style={styles.successBox}>
-              <Ionicons name="checkmark-circle-outline" size={15} color={Colors.success} />
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={15}
+                color={Colors.success}
+              />
               <Text style={styles.successText}>{success}</Text>
             </View>
           ) : null}
 
           {error ? (
             <View style={styles.errorBox}>
-              <Ionicons name="alert-circle-outline" size={15} color={Colors.danger} />
+              <Ionicons
+                name="alert-circle-outline"
+                size={15}
+                color={Colors.danger}
+              />
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
@@ -133,7 +171,12 @@ export default function ResetPasswordScreen() {
           {/* New Password */}
           <Text style={styles.fieldLabel}>NEW PASSWORD</Text>
           <View style={styles.inputRow}>
-            <Ionicons name="lock-closed-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
+            <Ionicons
+              name="lock-closed-outline"
+              size={20}
+              color={Colors.textMuted}
+              style={styles.inputIcon}
+            />
             <TextInput
               style={styles.input}
               placeholder="Enter new password"
@@ -144,7 +187,10 @@ export default function ResetPasswordScreen() {
               autoCapitalize="none"
               returnKeyType="next"
             />
-            <Pressable onPress={() => setShowNewPassword(!showNewPassword)} style={styles.eyeBtn}>
+            <Pressable
+              onPress={() => setShowNewPassword(!showNewPassword)}
+              style={styles.eyeBtn}
+            >
               <Ionicons
                 name={showNewPassword ? "eye-off-outline" : "eye-outline"}
                 size={20}
@@ -156,7 +202,12 @@ export default function ResetPasswordScreen() {
           {/* Confirm Password */}
           <Text style={styles.fieldLabel}>CONFIRM PASSWORD</Text>
           <View style={styles.inputRow}>
-            <Ionicons name="lock-closed-outline" size={20} color={Colors.textMuted} style={styles.inputIcon} />
+            <Ionicons
+              name="lock-closed-outline"
+              size={20}
+              color={Colors.textMuted}
+              style={styles.inputIcon}
+            />
             <TextInput
               style={styles.input}
               placeholder="Confirm new password"
@@ -168,7 +219,10 @@ export default function ResetPasswordScreen() {
               returnKeyType="done"
               onSubmitEditing={handleResetPassword}
             />
-            <Pressable onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeBtn}>
+            <Pressable
+              onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+              style={styles.eyeBtn}
+            >
               <Ionicons
                 name={showConfirmPassword ? "eye-off-outline" : "eye-outline"}
                 size={20}
@@ -179,14 +233,21 @@ export default function ResetPasswordScreen() {
 
           {/* Password Requirements */}
           <View style={styles.requirementsBox}>
-            <Ionicons name="information-circle-outline" size={14} color={Colors.info} />
+            <Ionicons
+              name="information-circle-outline"
+              size={14}
+              color={Colors.info}
+            />
             <Text style={styles.requirementsText}>
               Password must be at least 6 characters
             </Text>
           </View>
 
           <Pressable
-            style={({ pressed }) => [styles.submitBtn, { opacity: pressed ? 0.85 : 1 }]}
+            style={({ pressed }) => [
+              styles.submitBtn,
+              { opacity: pressed || loading ? 0.85 : 1 },
+            ]}
             onPress={handleResetPassword}
             disabled={loading}
           >
@@ -199,7 +260,10 @@ export default function ResetPasswordScreen() {
         </View>
 
         {/* Back to Login */}
-        <Pressable onPress={() => router.replace("/(auth)/login")} style={styles.backRow}>
+        <Pressable
+          onPress={() => router.replace("/(auth)/login")}
+          style={styles.backRow}
+        >
           <Ionicons name="arrow-back" size={16} color={Colors.primary} />
           <Text style={styles.backText}>Back to Login</Text>
         </Pressable>
@@ -231,8 +295,17 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
   },
-  appTitle: { fontSize: 28, fontFamily: "Urbanist_700Bold", color: Colors.text, marginBottom: 6 },
-  appSubtitle: { fontSize: 15, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary },
+  appTitle: {
+    fontSize: 28,
+    fontFamily: "Urbanist_700Bold",
+    color: Colors.text,
+    marginBottom: 6,
+  },
+  appSubtitle: {
+    fontSize: 15,
+    fontFamily: "Urbanist_400Regular",
+    color: Colors.textSecondary,
+  },
   card: {
     width: "100%",
     backgroundColor: Colors.card,
@@ -269,7 +342,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#FECACA",
   },
-  errorText: { color: Colors.danger, fontSize: 13, fontFamily: "Urbanist_500Medium", flex: 1 },
+  errorText: {
+    color: Colors.danger,
+    fontSize: 13,
+    fontFamily: "Urbanist_500Medium",
+    flex: 1,
+  },
   successBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -280,7 +358,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#A7F3D0",
   },
-  successText: { color: Colors.success, fontSize: 13, fontFamily: "Urbanist_500Medium", flex: 1 },
+  successText: {
+    color: Colors.success,
+    fontSize: 13,
+    fontFamily: "Urbanist_500Medium",
+    flex: 1,
+  },
   fieldLabel: {
     fontSize: 11,
     fontFamily: "Urbanist_700Bold",
@@ -345,13 +428,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginBottom: 24,
+    marginBottom: 24, 
   },
   backText: {
     fontSize: 14,
     fontFamily: "Urbanist_600SemiBold",
     color: Colors.primary,
   },
-  footer: { fontSize: 13, fontFamily: "Urbanist_400Regular", color: Colors.textMuted, marginTop: "auto" },
-  footerBold: { fontFamily: "Urbanist_700Bold", color: Colors.text },
+  footer: {
+    fontSize: 13,
+    fontFamily: "Urbanist_400Regular",
+    color: Colors.textMuted,
+    marginTop: "auto",
+  },
+  footerBold: {
+    fontFamily: "Urbanist_700Bold",
+    color: Colors.text,
+  },
 });

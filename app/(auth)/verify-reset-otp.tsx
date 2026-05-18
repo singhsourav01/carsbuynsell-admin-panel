@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -17,7 +17,8 @@ import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { apiRequestDirect } from "@/lib/auth";
 
-const OTP_LENGTH = 6;
+
+const OTP_LENGTH = 4;
 
 export default function VerifyResetOTPScreen() {
   const insets = useSafeAreaInsets();
@@ -28,6 +29,7 @@ export default function VerifyResetOTPScreen() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const inputRefs = useRef<(TextInput | null)[]>([]);
+  const [cooldown, setCooldown] = useState(0);
 
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
@@ -46,110 +48,168 @@ export default function VerifyResetOTPScreen() {
     }
   };
 
+  useEffect(() => {
+  if (cooldown <= 0) return;
+
+  const timer = setInterval(() => {
+    setCooldown((prev) => prev - 1);
+  }, 1000);
+
+  return () => clearInterval(timer);
+}, [cooldown]);
+
   const handleKeyPress = (e: any, idx: number) => {
     if (e.nativeEvent.key === "Backspace" && !otp[idx] && idx > 0) {
       inputRefs.current[idx - 1]?.focus();
     }
   };
 
-  const handleVerify = async () => {
-    const otpValue = otp.join("");
-    if (otpValue.length < OTP_LENGTH) {
-      setError("Please enter the complete 6-digit OTP");
+ const handleVerify = async () => {
+  const otpValue = otp.join("");
+
+  if (otpValue.length < OTP_LENGTH) {
+    setError(`Please enter the complete ${OTP_LENGTH}-digit OTP`);
+    return;
+  }
+
+  if (!identifier || !type) {
+    setError("Verification session missing. Please try again.");
+    return;
+  }
+
+  setError("");
+  setSuccess("");
+  setLoading(true);
+
+  try {
+    const isEmail = type === "email";
+
+    const url = isEmail
+      ? "http://65.2.10.30:3002/user/verify-email"
+      : "http://65.2.10.30:3002/user/verify-sms";
+
+    const payload = isEmail
+      ? {
+          email: String(identifier).toLowerCase(),
+          code: otpValue,
+        }
+      : {
+          phoneNumber: String(identifier).replace(/\D/g, ""),
+          code: otpValue,
+        };
+
+    const res = await apiRequestDirect("POST", url, payload);
+
+    const rawText = await res.text();
+
+    let data: any = {};
+
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = { message: rawText };
+    }
+
+    if (!res.ok || data?.success === false) {
+      const apiMessage =
+        data?.message ||
+        data?.error ||
+        "Invalid OTP. Please try again.";
+
+      setError(apiMessage);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
-    setError("");
-    setSuccess("");
-    setLoading(true);
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setSuccess(data?.message || "OTP verified successfully!");
+
+    setTimeout(() => {
+      router.replace({
+        pathname: "/(auth)/reset-password",
+        params: {
+          identifier: String(identifier),
+          type: String(type),
+        },
+      });
+    }, 800);
+  } catch (err: any) {
+    setError(
+      err?.message ||
+        "Verification failed. Please try again."
+    );
+  } finally {
+    setLoading(false);
+  }
+};
+  
+
+const handleResend = async () => {
+  if (resending) return;
+
+  if (!identifier || !type) {
+    setError("Verification session missing. Please try again.");
+    return;
+  }
+
+  setResending(true);
+  setError("");
+  setSuccess("");
+
+  try {
+    const isEmail = type === "email";
+
+    const url = isEmail
+      ? "http://65.2.10.30:3002/user/send-email"
+      : "http://65.2.10.30:3002/user/send-sms";
+
+    const payload = isEmail
+      ? {
+          email: String(identifier).toLowerCase(),
+        }
+      : {
+          phoneNumber: String(identifier).replace(/\D/g, ""),
+        };
+
+    console.log("Resend OTP payload:", payload);
+
+    const res = await apiRequestDirect("POST", url, payload);
+
+    const rawText = await res.text();
+
+    let data: any = {};
 
     try {
-      const payload = type === "email" 
-        ? { email: identifier, otp: otpValue }
-        : { phone: identifier, otp: otpValue };
-
-      const res = await apiRequestDirect(
-        "POST",
-        "http://65.2.10.30:3002/user/verify-reset-otp",
-        payload
-      );
-
-      const rawText = await res.text();
-      let data: any = {};
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        data = { message: rawText };
-      }
-
-      if (res.ok) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setSuccess("OTP verified successfully!");
-
-        // Extract reset token
-        const resetToken = data?.reset_token || data?.resetToken || data?.data?.reset_token;
-
-        // Navigate to reset password screen
-        setTimeout(() => {
-          router.push({
-            pathname: "/(auth)/reset-password",
-            params: {
-              resetToken: resetToken || "",
-              identifier,
-              type,
-            },
-          });
-        }, 800);
-      } else {
-        const apiMessage = data?.message || data?.error || "Invalid OTP. Please try again.";
-        setError(apiMessage);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      }
-    } catch (err: any) {
-      setError(err?.message || "Verification failed. Please try again.");
-    } finally {
-      setLoading(false);
+      data = JSON.parse(rawText);
+    } catch {
+      data = { message: rawText };
     }
-  };
 
-  const handleResend = async () => {
-    setResending(true);
-    setError("");
-    setSuccess("");
+    console.log("Resend OTP response:", data);
 
-    try {
-      const payload = type === "email" 
-        ? { email: identifier } 
-        : { phone: identifier };
+    if (!res.ok || data?.success === false) {
+      const apiMessage =
+        data?.message ||
+        data?.error ||
+        "Failed to resend OTP";
 
-      const res = await apiRequestDirect(
-        "POST",
-        "http://65.2.10.30:3002/user/forgot-password",
-        payload
-      );
-
-      const rawText = await res.text();
-      let data: any = {};
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        data = { message: rawText };
-      }
-
-      if (res.ok) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setSuccess(data?.message || "OTP resent successfully!");
-        setOtp(Array(OTP_LENGTH).fill(""));
-        inputRefs.current[0]?.focus();
-      } else {
-        setError(data?.message || "Failed to resend OTP");
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      }
-    } catch (err: any) {
-      setError(err?.message || "Network error. Please try again.");
-    } finally {
-      setResending(false);
+      setError(apiMessage);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
     }
-  };
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setSuccess(data?.message || "OTP resent successfully!");
+    setOtp(Array(OTP_LENGTH).fill(""));
+    inputRefs.current[0]?.focus();
+  } catch (err: any) {
+    console.log("Resend OTP error:", err);
+    setError(err?.message || "Network error. Please try again.");
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+  } finally {
+    setResending(false);
+  }
+};
 
   return (
     <KeyboardAvoidingView
@@ -234,13 +294,24 @@ export default function VerifyResetOTPScreen() {
 
           {/* Resend & Edit */}
           <View style={styles.actionRow}>
-            <Pressable onPress={handleResend} disabled={resending} style={styles.resendBtn}>
-              {resending ? (
-                <ActivityIndicator size="small" color={Colors.primary} />
-              ) : (
-                <Text style={styles.resendText}>RESEND OTP</Text>
-              )}
-            </Pressable>
+<Pressable
+  onPress={handleResend}
+  disabled={resending || cooldown > 0}
+  style={({ pressed }) => [
+    styles.resendBtn,
+    {
+      opacity: pressed || resending || cooldown > 0 ? 0.6 : 1,
+    },
+  ]}
+>
+  <Text style={styles.resendText}>
+    {resending
+      ? "Resending..."
+      : cooldown > 0
+        ? `Resend OTP in ${cooldown}s`
+        : "Resend OTP"}
+  </Text>
+</Pressable>
 
             <View style={styles.actionDivider} />
 

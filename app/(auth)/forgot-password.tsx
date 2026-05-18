@@ -27,71 +27,92 @@ export default function ForgotPasswordScreen() {
 
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
-  const handleRequestOTP = async () => {
-    const cleaned = inputValue.trim();
-    if (!cleaned) {
-      setError(inputType === "email" ? "Please enter your email address" : "Please enter your mobile number");
-      return;
-    }
+const handleRequestOTP = async () => {
+  const cleaned = inputValue.trim();
 
-    // Basic validation
-    if (inputType === "email" && !cleaned.includes("@")) {
-      setError("Please enter a valid email address");
-      return;
-    }
-    if (inputType === "phone" && cleaned.replace(/\D/g, "").length < 10) {
-      setError("Please enter a valid 10-digit mobile number");
-      return;
-    }
+  if (!cleaned) {
+    setError(
+      inputType === "email"
+        ? "Please enter your email address"
+        : "Please enter your mobile number"
+    );
+    return;
+  }
 
-    setError("");
-    setSuccess("");
-    setLoading(true);
+  if (inputType === "email" && !/^\S+@\S+\.\S+$/.test(cleaned)) {
+    setError("Please enter a valid email address");
+    return;
+  }
+
+  const cleanPhone = cleaned.replace(/\D/g, "");
+
+  if (inputType === "phone" && cleanPhone.length !== 10) {
+    setError("Please enter a valid 10-digit mobile number");
+    return;
+  }
+
+  setError("");
+  setSuccess("");
+  setLoading(true);
+
+  try {
+    const url =
+      inputType === "email"
+        ? "http://65.2.10.30:3002/user/send-email"
+        : "http://65.2.10.30:3002/user/send-sms";
+
+    const payload =
+      inputType === "email"
+        ? { email: cleaned.toLowerCase() }
+        : { phoneNumber: cleanPhone };
+
+    const res = await apiRequestDirect("POST", url, payload);
+
+    const rawText = await res.text();
+
+    let data: any = {};
 
     try {
-      const payload = inputType === "email" 
-        ? { email: cleaned } 
-        : { phone: cleaned.replace(/\D/g, "") };
-
-      const res = await apiRequestDirect(
-        "POST",
-        "http://65.2.10.30:3002/user/forgot-password",
-        payload
-      );
-
-      const rawText = await res.text();
-      let data: any = {};
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        data = { message: rawText };
-      }
-
-      if (res.ok) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setSuccess(data?.message || "OTP sent successfully!");
-        
-        // Navigate to OTP verification screen
-        setTimeout(() => {
-          router.push({
-            pathname: "/(auth)/verify-reset-otp",
-            params: {
-              identifier: inputType === "email" ? cleaned : cleaned.replace(/\D/g, ""),
-              type: inputType,
-            },
-          });
-        }, 800);
-      } else {
-        const apiMessage = data?.message || data?.error || "Failed to send OTP. Please try again.";
-        setError(apiMessage);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      }
-    } catch (err: any) {
-      setError(err?.message || "Network error. Please check your connection.");
-    } finally {
-      setLoading(false);
+      data = JSON.parse(rawText);
+    } catch {
+      data = { message: rawText };
     }
-  };
+
+    if (!res.ok || data?.success === false) {
+      const apiMessage =
+        data?.message ||
+        data?.error ||
+        "Failed to send OTP. Please try again.";
+
+      setError(apiMessage);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setSuccess(data?.message || "OTP sent successfully!");
+
+    setTimeout(() => {
+      router.push({
+        pathname: "/(auth)/verify-reset-otp",
+        params: {
+          identifier:
+            inputType === "email"
+              ? cleaned.toLowerCase()
+              : cleanPhone,
+          type: inputType,
+        },
+      });
+    }, 800);
+  } catch (err: any) {
+    setError(
+      err?.message ||
+        "Network error. Please check your connection."
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <KeyboardAvoidingView
