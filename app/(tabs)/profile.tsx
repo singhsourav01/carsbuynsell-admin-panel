@@ -2,18 +2,19 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   View, Text, ScrollView, Pressable, StyleSheet,
   TextInput, Modal, ActivityIndicator, Alert,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { RazorpayCheckoutModal } from "@/components/RazorpayCheckoutModal";
-import { apiRequestDirect } from "@/lib/auth";
+import { apiRequestDirect, getToken } from "@/lib/auth";
 import { fetchMySubscription, ActiveSubscription, CreateOrderResult, RazorpayPaymentResult } from "@/lib/subscription";
 
 const CATEGORIES = ["Sedan", "SUV", "Hatchback", "Luxury", "Sports", "Electric"];
@@ -26,7 +27,7 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
   const [basePrice, setBasePrice] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkoutOrder, setCheckoutOrder] = useState<CreateOrderResult | null>(null);
-  
+
   // Store form data for after payment
   const [pendingSubmission, setPendingSubmission] = useState<{
     title: string;
@@ -36,11 +37,11 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
   } | null>(null);
 
   const handleSubmit = async () => {
-    if (!title.trim() || !basePrice.trim()) { 
-      Alert.alert("Missing Info", "Please enter vehicle title and price."); 
-      return; 
+    if (!title.trim() || !basePrice.trim()) {
+      Alert.alert("Missing Info", "Please enter vehicle title and price.");
+      return;
     }
-    
+
     // Store form data for after payment
     setPendingSubmission({
       title: title.trim(),
@@ -48,7 +49,7 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
       category,
       basePrice: basePrice.trim()
     });
-    
+
     setLoading(true);
     try {
       // Create Razorpay order for ₹800 listing fee
@@ -56,11 +57,11 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
         plan_id: "sub_002", // Sell vehicle plan ID
         amount: SELL_VEHICLE_FEE * 100, // Amount in paise
       }, true);
-      
+
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
-      
+
       if (res.ok && data?.data) {
         console.log("[SELL] Order created:", data.data);
         setCheckoutOrder(data.data);
@@ -80,12 +81,12 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
 
   const handlePaymentSuccess = async (paymentResult: RazorpayPaymentResult) => {
     setCheckoutOrder(null);
-    
+
     if (!pendingSubmission) {
       Alert.alert("Error", "Form data was lost. Please try again.");
       return;
     }
-    
+
     setLoading(true);
     try {
       // First verify the payment
@@ -94,20 +95,20 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
         razorpay_payment_id: paymentResult.razorpay_payment_id,
         razorpay_signature: paymentResult.razorpay_signature,
       }, true);
-      
+
       const verifyRaw = await verifyRes.text();
       let verifyData: any = {};
       try { verifyData = JSON.parse(verifyRaw); } catch { verifyData = {}; }
-      
+
       if (!verifyRes.ok) {
         Alert.alert("Payment Error", verifyData?.message || "Payment verification failed.");
         setPendingSubmission(null);
         setLoading(false);
         return;
       }
-      
+
       console.log("[SELL] Payment verified, submitting vehicle data...");
-      
+
       // Now submit the vehicle record
       const res = await apiRequestDirect("POST", "http://65.2.10.30:3002/user/vehicle-records", {
         uvr_title: pendingSubmission.title,
@@ -116,11 +117,11 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
         uvr_base_price: parseInt(pendingSubmission.basePrice, 10),
         uvr_razorpay_payment_id: paymentResult.razorpay_payment_id, // Link payment to record
       }, true);
-      
+
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
-      
+
       if (res.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert(
@@ -138,7 +139,7 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
       } else {
         // Payment was successful but vehicle submission failed - refund scenario
         Alert.alert(
-          "Submission Error", 
+          "Submission Error",
           data?.message || "Payment was successful but vehicle submission failed. Please contact support with your payment ID: " + paymentResult.razorpay_payment_id
         );
       }
@@ -222,7 +223,7 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
           </View>
         </KeyboardAvoidingView>
       </Modal>
-      
+
       {/* Razorpay Checkout Modal */}
       <RazorpayCheckoutModal
         visible={!!checkoutOrder}
@@ -257,6 +258,11 @@ export default function ProfileScreen() {
   const [editPhone, setEditPhone] = useState("");
   const [editGender, setEditGender] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Profile photo state
+  const [editPhotoUri, setEditPhotoUri] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [pendingFileId, setPendingFileId] = useState<string | null>(null); // file_id from upload service, sent on Save
 
   // Get user ID (could be stored as 'id', 'user_id', etc.)
   const userId = (user as any)?.id || (user as any)?.user_id || (user as any)?.uld_user_id || "";
@@ -306,35 +312,142 @@ export default function ProfileScreen() {
   }, []);
 
   useEffect(() => { loadSubscription(); }, [loadSubscription]);
-
+  console.log(profile, " here is prfoile")
   const openEditProfile = () => {
     // Map API fields: user_full_name, user_email, user_primary_phone, user_gender
     setEditName(profile?.user_full_name || profile?.full_name || user?.fullName || "");
     setEditEmail(profile?.user_email || profile?.email || user?.email || "");
     setEditPhone(profile?.user_primary_phone || profile?.phone || user?.phone || "");
     setEditGender(profile?.user_gender || profile?.gender || "");
+    setEditPhotoUri(profile?.user_profile_image_file_id || null);   // reset local preview
+    setPendingFileId(profile?.user_profile_image_file_id || null);  // reset any pending file upload
     setEditVisible(true);
   };
 
+  const pickAndUploadPhoto = async () => {
+    try {
+      // Request media library permission
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission Required", "Please allow access to your photo library to update your profile picture.");
+        return;
+      }
+
+      // Launch image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+      // Show preview immediately — never clear this after picking
+      setEditPhotoUri(asset.uri);
+      setPendingFileId(null); // reset any old file id
+      setUploadingPhoto(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      // Guard: user must be logged in with a resolvable ID
+      if (!userId) {
+        Alert.alert("Error", "Could not determine your user ID. Please log out and log back in.");
+        return;
+      }
+
+      const filename = asset.uri.split("/").pop() || "profile.jpg";
+      const mimeType = asset.mimeType || "image/jpeg";
+
+      // Step 1: Read the image file into a real Blob via XHR
+      // (The { uri, name, type } RN shorthand can silently fail in some Expo environments)
+      console.log("[PHOTO] Reading image as blob from URI:", asset.uri);
+      const imageBlob: Blob = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.onload = () => resolve(xhr.response);
+        xhr.onerror = () => reject(new Error("Failed to read image file from URI"));
+        xhr.responseType = "blob";
+        xhr.open("GET", asset.uri, true);
+        xhr.send(null);
+      });
+      console.log("[PHOTO] Blob size:", imageBlob.size, "type:", imageBlob.type);
+
+      // Step 2: Build multipart FormData with the real Blob
+      // Middleware checks: files?.files (field "files") and fields?.type (field "type")
+      const formData = new FormData();
+      formData.append("files", imageBlob, filename);
+      formData.append("type", "portfolio");
+
+      // Step 3: POST to file service
+      const token = await getToken();
+      console.log("[PHOTO] Uploading → userId:", userId, "token:", token ? "present" : "missing");
+
+      const uploadData: any = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `http://65.2.10.30:3003/file/upload?id=${userId}`);
+        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        // Do NOT set Content-Type — XHR sets multipart boundary automatically
+        xhr.onload = () => {
+          console.log("[PHOTO] Upload status:", xhr.status, "response:", xhr.responseText.substring(0, 300));
+          try { resolve(JSON.parse(xhr.responseText)); }
+          catch { resolve({ message: xhr.responseText, statusCode: xhr.status }); }
+        };
+        xhr.onerror = () => reject(new Error("Network error during upload"));
+        xhr.send(formData);
+      });
+
+      if (uploadData?.statusCode && uploadData.statusCode !== 200) {
+        Alert.alert("Upload Failed", uploadData?.message || "Failed to upload photo. Please try again.");
+        return;
+      }
+
+      const fileId = uploadData?.data?.[0]?.file_id
+        || uploadData?.data?.file_id
+        || uploadData?.file_id
+        || uploadData?.id;
+
+      if (!fileId) {
+        console.log("[PHOTO] Unexpected upload response:", JSON.stringify(uploadData));
+        Alert.alert("Upload Error", "Could not get file ID. Please try again.");
+        return;
+      }
+
+      console.log("[PHOTO] File uploaded successfully, file_id:", fileId);
+      setPendingFileId(fileId);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err: any) {
+      console.error("[PHOTO] Upload error:", err);
+      Alert.alert("Error", "Something went wrong uploading your photo. Please try again.");
+      // Photo preview stays so user can retry — do NOT clear editPhotoUri
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   const handleSaveProfile = async () => {
-    if (!editName.trim()) return;
+    if (!pendingFileId) {
+      // Nothing new to save
+      setEditVisible(false);
+      return;
+    }
     setSaving(true);
     try {
-      const res = await apiRequestDirect("PUT", "http://65.2.10.30:3002/user/users-profile", {
-        full_name: editName.trim(),
-        email: editEmail.trim(),
-        phone: editPhone.trim(),
-        gender: editGender.toUpperCase(),
-      }, true);
+      const res = await apiRequestDirect(
+        "PUT",
+        "http://65.2.10.30:3002/user/users-profile",
+        { profile_image_file_id: pendingFileId },
+        true
+      );
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
       if (res.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setPendingFileId(null);
         setEditVisible(false);
         fetchProfile();
       } else {
-        Alert.alert("Error", data?.message || "Failed to update profile.");
+        Alert.alert("Error", data?.message || "Failed to update profile photo.");
       }
     } catch { Alert.alert("Error", "Network error. Please try again."); }
     finally { setSaving(false); }
@@ -344,6 +457,7 @@ export default function ProfileScreen() {
   const displayName = profile?.user_full_name || profile?.full_name || user?.fullName || "User";
   const displayEmail = profile?.user_email || profile?.email || user?.email || "";
   const displayPhone = profile?.user_primary_phone || profile?.phone || user?.phone || "";
+  const displayImage = profile?.user_profile_image_file_id || "";
 
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().substring(0, 2);
 
@@ -364,7 +478,7 @@ export default function ProfileScreen() {
         {/* Profile Card — tap to edit */}
         <Pressable onPress={openEditProfile} style={styles.profileCard}>
           <LinearGradient colors={[Colors.hero, Colors.heroLight]} style={styles.avatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-            <Text style={styles.avatarText}>{initials}</Text>
+            <Image source={{ uri: displayImage }} style={styles.avatar} />
           </LinearGradient>
           {profileLoading ? (
             <ActivityIndicator color={Colors.primary} style={{ marginTop: 8 }} />
@@ -469,6 +583,36 @@ export default function ProfileScreen() {
                 <Pressable onPress={() => setEditVisible(false)} style={editS.closeBtn}><Ionicons name="close" size={20} color={Colors.textSecondary} /></Pressable>
               </View>
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={editS.form}>
+
+                {/* Profile Photo */}
+                <View style={editS.photoSection}>
+                  <Pressable onPress={pickAndUploadPhoto} disabled={uploadingPhoto} style={editS.photoWrap}>
+                    {(() => {
+                      const photoUrl = editPhotoUri ||
+                        profile?.user_profile_image_url ||
+                        profile?.profile_image_url ||
+                        profile?.profile_image ||
+                        null;
+                      return photoUrl ? (
+                        <Image source={{ uri: photoUrl }} style={editS.photoImg} />
+                      ) : (
+                        <LinearGradient colors={[Colors.hero, Colors.heroLight]} style={editS.photoPlaceholder} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                          <Text style={editS.photoInitials}>{initials}</Text>
+                        </LinearGradient>
+                      );
+                    })()}
+                    {/* Overlay badge */}
+                    <View style={editS.photoBadge}>
+                      {uploadingPhoto
+                        ? <ActivityIndicator size="small" color="#fff" />
+                        : <Ionicons name="camera" size={14} color="#fff" />}
+                    </View>
+                  </Pressable>
+                  <Text style={editS.photoHint}>
+                    {uploadingPhoto ? "Uploading photo…" : "Tap to change profile photo"}
+                  </Text>
+                </View>
+
                 {/* Full Name — editable */}
                 <View style={editS.group}>
                   <Text style={editS.label}>FULL NAME</Text>
@@ -533,7 +677,7 @@ export default function ProfileScreen() {
                 <Pressable
                   style={({ pressed }) => [editS.saveBtn, { opacity: pressed ? 0.85 : 1 }]}
                   onPress={handleSaveProfile}
-                  disabled={saving}
+                  disabled={saving || uploadingPhoto}
                 >
                   <LinearGradient colors={[Colors.heroLight, Colors.hero]} style={editS.saveGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                     {saving ? <ActivityIndicator color="#fff" /> : (
@@ -621,7 +765,7 @@ const sellS = StyleSheet.create({
 
 const editS = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
-  sheet: { backgroundColor: Colors.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: "90%", borderWidth: 1, borderColor: Colors.cardBorder },
+  sheet: { backgroundColor: Colors.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: "92%", borderWidth: 1, borderColor: Colors.cardBorder },
   grabber: { width: 36, height: 4, backgroundColor: Colors.cardBorder, borderRadius: 2, alignSelf: "center", marginTop: 12, marginBottom: 4 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 24, paddingVertical: 16 },
   title: { fontSize: 20, fontFamily: "Urbanist_700Bold", color: Colors.text },
@@ -642,4 +786,12 @@ const editS = StyleSheet.create({
   saveBtn: { borderRadius: 14, overflow: "hidden", marginTop: 4 },
   saveGrad: { height: 54, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
   saveText: { fontSize: 16, fontFamily: "Urbanist_700Bold", color: "#fff" },
+  // Profile photo
+  photoSection: { alignItems: "center", paddingVertical: 4, gap: 10 },
+  photoWrap: { width: 90, height: 90, borderRadius: 26, position: "relative" },
+  photoImg: { width: 90, height: 90, borderRadius: 26 },
+  photoPlaceholder: { width: 90, height: 90, borderRadius: 26, alignItems: "center", justifyContent: "center" },
+  photoInitials: { fontSize: 30, fontFamily: "Urbanist_700Bold", color: "#fff" },
+  photoBadge: { position: "absolute", bottom: 0, right: 0, width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.primary, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: Colors.card },
+  photoHint: { fontSize: 12, fontFamily: "Urbanist_400Regular", color: Colors.textMuted },
 });
