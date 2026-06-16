@@ -9,8 +9,8 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { apiRequestDirect } from "@/lib/auth";
-
-const OTP_LENGTH = 6;
+import AsyncStorage from "@react-native-async-storage/async-storage";
+const OTP_LENGTH = 4;
 
 function StepItem({ n, text, state }: { n: string; text: string; state: "done" | "active" | "pending" }) {
   return (
@@ -53,10 +53,15 @@ export default function VerifyPhoneScreen() {
 
   const handleVerify = async () => {
     const otpValue = otp.join("");
-    if (otpValue.length < OTP_LENGTH) { setError("Please enter all 6 digits"); return; }
+    if (otpValue.length < OTP_LENGTH) { setError("Please enter all 4 digits"); return; }
     setError(""); setLoading(true);
+
+
     try {
-      const res = await apiRequestDirect("POST", "http://65.2.10.30:3001/auth/verify-phone", { otp: otpValue, phone });
+      const res = await apiRequestDirect("POST", "http://65.2.10.30:3002/user/verify-sms", { code: otpValue, phoneNumber: phone });
+         if(res.ok){
+              await apiRequestDirect("POST", "http://65.2.10.30:3001/auth/verify-phone", { phone });
+            }
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
@@ -74,7 +79,7 @@ export default function VerifyPhoneScreen() {
   const handleResend = async () => {
     setResending(true); setError(""); setSuccess("");
     try {
-      const res = await apiRequestDirect("POST", "http://65.2.10.30:3001/auth/send-phone-otp", { phone });
+      const res = await apiRequestDirect("POST", "http://65.2.10.30:3002/user/send-sms", { phoneNumber: phone });
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
@@ -117,7 +122,7 @@ export default function VerifyPhoneScreen() {
           </View>
 
           <Text style={styles.cardTitle}>VERIFY OTP</Text>
-          <Text style={styles.cardSub}>Enter the 6-digit code sent to your mobile number</Text>
+          <Text style={styles.cardSub}>Enter the 4-digit code sent to your mobile number</Text>
 
           {error ? (
             <View style={styles.errorBox}>
@@ -151,12 +156,6 @@ export default function VerifyPhoneScreen() {
                 selectTextOnFocus
               />
             ))}
-          </View>
-
-          {/* Demo hint */}
-          <View style={styles.hintBox}>
-            <Ionicons name="information-circle-outline" size={13} color={Colors.info} />
-            <Text style={styles.hintText}>Demo OTP: <Text style={styles.hintCode}>123456</Text></Text>
           </View>
 
           <Pressable

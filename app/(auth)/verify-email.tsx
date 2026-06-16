@@ -13,7 +13,7 @@ import Animated, {
   useSharedValue, useAnimatedStyle, withTiming, withSequence, Easing,
 } from "react-native-reanimated";
 
-const OTP_LENGTH = 6;
+const OTP_LENGTH = 4;
 
 function StepItem({ n, text, state }: { n: string; text: string; state: "done" | "active" | "pending" }) {
   return (
@@ -78,10 +78,16 @@ export default function VerifyEmailScreen() {
 
   const handleVerify = async () => {
     const otpValue = otp.join("");
-    if (otpValue.length < OTP_LENGTH) { setError("Please enter all 6 digits"); return; }
+    if (otpValue.length < OTP_LENGTH) { setError("Please enter all 4 digits"); return; }
     setError(""); setLoading(true);
     try {
-      const res = await apiRequestDirect("POST", "http://65.2.10.30:3001/auth/verify-email", { otp: otpValue, email });
+
+      const res = await apiRequestDirect("POST", "http://65.2.10.30:3002/user/verify-email", { code: otpValue, email });
+
+      if(res.ok){
+        await apiRequestDirect("POST", "http://65.2.10.30:3001/auth/verify-email", { email, code: otpValue });
+      }
+
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
@@ -99,7 +105,7 @@ export default function VerifyEmailScreen() {
   const handleResend = async () => {
     setResending(true); setError(""); setSuccess("");
     try {
-      const res = await apiRequestDirect("POST", "http://65.2.10.30:3001/auth/send-email-otp", { email });
+      const res = await apiRequestDirect("POST", "http://65.2.10.30:3002/user/send-email", { email });
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
@@ -142,7 +148,8 @@ export default function VerifyEmailScreen() {
           </View>
 
           <Text style={styles.cardTitle}>VERIFY EMAIL OTP</Text>
-          <Text style={styles.cardSub}>Enter the 6-digit code sent to your email address</Text>
+          <Text style={styles.cardSub}>Enter the 4
+            -digit code sent to your email address</Text>
 
           {error ? (
             <View style={styles.errorBox}>
@@ -176,12 +183,6 @@ export default function VerifyEmailScreen() {
                 selectTextOnFocus
               />
             ))}
-          </View>
-
-          {/* Demo hint */}
-          <View style={styles.hintBox}>
-            <Ionicons name="information-circle-outline" size={13} color={Colors.info} />
-            <Text style={styles.hintText}>Demo OTP: <Text style={styles.hintCode}>123456</Text></Text>
           </View>
 
           <Pressable

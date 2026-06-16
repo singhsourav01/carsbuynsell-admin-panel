@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { apiRequestDirect } from "@/lib/auth";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 interface FormErrors { fullName?: string; phone?: string; email?: string; password?: string; general?: string; }
 
@@ -51,55 +52,87 @@ export default function RegisterScreen() {
 
   const clearError = (field: keyof FormErrors) => setErrors(p => ({ ...p, [field]: undefined }));
 
-  const handleSubmit = async () => {
-    const errs = validate(fullName, phone, email, password);
-    if (Object.keys(errs).length > 0) {
-      setErrors(errs);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      return;
-    }
-    setErrors({});
-    setLoading(true);
-    try {
-      const fullPhone = `${phone.replace(/\D/g, "")}`;
-      const res = await apiRequestDirect("POST", "http://65.2.10.30:3001/auth/signup", {
+const handleSubmit = async () => {
+  const errs = validate(fullName, phone, email, password);
+
+  if (Object.keys(errs).length > 0) {
+    setErrors(errs);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    return;
+  }
+
+  setErrors({});
+  setLoading(true);
+
+  try {
+    const fullPhone = `${phone.replace(/\D/g, "")}`;
+
+    const res = await apiRequestDirect(
+      "POST",
+      "http://65.2.10.30:3001/auth/signup",
+      {
         full_name: fullName.trim(),
         email: email.trim().toLowerCase(),
         password,
         phone: fullPhone,
-      });
-
-      // Read response as text first, then try to parse as JSON
-      const rawText = await res.text();
-      let data: any = {};
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        // Response is not JSON
-        data = { message: rawText || "Unexpected server response" };
       }
+    );
 
-      if (res.ok) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setSuccess(data?.message || "Account created successfully!");
-        setTimeout(() => {
-          router.push({
-            pathname: "/(auth)/verify-phone",
-            params: { phone: fullPhone, email: email.trim().toLowerCase() },
-          });
-        }, 800);
-      } else {
-        // Show error message from API response
-        const apiMessage = data?.message || data?.error || `Registration failed (${res.status})`;
-        setErrors({ general: apiMessage });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      }
-    } catch (err: any) {
-      setErrors({ general: err?.message || "Network error. Please check your connection." });
-    } finally {
-      setLoading(false);
+    const rawText = await res.text();
+
+    let data: any = {};
+
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = {
+        message: rawText || "Unexpected server response",
+      };
     }
-  };
+
+    if (res.ok) {
+      await AsyncStorage.setItem("signup_response", JSON.stringify(data));
+
+      await AsyncStorage.setItem(
+        "signup_user",
+        JSON.stringify({
+          fullName: fullName.trim(),
+          phone: fullPhone,
+          email: email.trim().toLowerCase(),
+        })
+      );
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      setSuccess(data?.message || "Account created successfully!");
+
+      setTimeout(() => {
+        router.push({
+          pathname: "/(auth)/verify-phone",
+          params: {
+            phone: fullPhone,
+            email: email.trim().toLowerCase(),
+          },
+        });
+      }, 800);
+    } else {
+      const apiMessage =
+        data?.message ||
+        data?.error ||
+        `Registration failed (${res.status})`;
+
+      setErrors({ general: apiMessage });
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+  } catch (err: any) {
+    setErrors({
+      general: err?.message || "Network error. Please check your connection.",
+    });
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <KeyboardAvoidingView style={[styles.root, { paddingTop: topPad }]} behavior={Platform.OS === "ios" ? "padding" : undefined}>
