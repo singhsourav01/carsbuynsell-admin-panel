@@ -11,13 +11,14 @@ import {
   fetchMySubscription,
   fetchPlans,
   createSubscriptionOrder,
+  openNativeRazorpayCheckout,
   verifySubscriptionPayment,
   ActiveSubscription,
   SubscriptionPlan,
   CreateOrderResult,
   RazorpayPaymentResult,
 } from "@/lib/subscription";
-import { RazorpayCheckoutModal } from "./RazorpayCheckoutModal";
+
 
 interface SubscriptionModalProps {
   visible: boolean;
@@ -33,7 +34,6 @@ export function SubscriptionModal({ visible, onClose, onSuccess, planType = "auc
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [subChecked, setSubChecked] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
-  const [checkoutOrder, setCheckoutOrder] = useState<CreateOrderResult | null>(null);
 
   const loadData = useCallback(async () => {
     setSubChecked(false);
@@ -123,6 +123,7 @@ export function SubscriptionModal({ visible, onClose, onSuccess, planType = "auc
   const proceedWithPayment = async (plan_id: string, price: number) => {
     setSubscribing(true);
     try {
+      // Step 1: Create order on backend
       console.log("[SUB] Starting subscription flow for plan:", plan_id);
       const order = await createSubscriptionOrder(plan_id);
       console.log("[SUB] Order created:", JSON.stringify(order));
@@ -135,178 +136,103 @@ export function SubscriptionModal({ visible, onClose, onSuccess, planType = "auc
         );
       }
 
-      setCheckoutOrder(order);
+      // Step 2: Open native Razorpay checkout (supports UPI, GPay, PhonePe, etc.)
+      const paymentResult = await openNativeRazorpayCheckout(
+        order,
+        "CarsbuyNsell User",
+        "",
+        "",
+        planType === "sell" ? "Vehicle Listing Fee" : "Vehicle Access Subscription",
+      );
+
+      // Step 3: Verify payment on backend
+      console.log("[SUB] Payment success from Razorpay:", paymentResult.razorpay_payment_id);
+      console.log("[SUB] Calling verify-payment for order:", paymentResult.razorpay_order_id);
+      await verifySubscriptionPayment(
+        paymentResult.razorpay_order_id,
+        paymentResult.razorpay_payment_id,
+        paymentResult.razorpay_signature
+      );
+
+      console.log("[SUB] Verification successful — subscription activated");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setSubscribing(false);
+      onSuccess();
     } catch (err: any) {
-      console.error("[SUB] Order creation failed:", err);
+      console.error("[SUB] Payment/Verification error:", err);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const message = err?.error?.description || err?.description || err?.message || "Could not complete payment. Please try again.";
       if (!message.toLowerCase().includes("cancel")) {
-        Alert.alert("Error Creating Order", message);
+        Alert.alert("Payment Error", message);
       }
       setSubscribing(false);
     }
   };
 
-
-  const handlePaymentSuccess = async (data: RazorpayPaymentResult) => {
-    console.log("[SUB] Payment success from Razorpay:", data.razorpay_payment_id);
-    console.log("[SUB] Full payment data:", JSON.stringify(data));
-    try {
-      console.log("[SUB] Calling verify-payment for order:", data.razorpay_order_id);
-      await verifySubscriptionPayment(
-        data.razorpay_order_id,
-        data.razorpay_payment_id,
-        data.razorpay_signature
-      );
-
-      console.log("[SUB] Verification successful — subscription activated");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setCheckoutOrder(null);
-      setSubscribing(false);
-      onSuccess();
-    } catch (err: any) {
-      console.error("[SUB] Verification error:", err);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      const message = err?.message || "Verification failed on server. Please contact support.";
-      Alert.alert("Payment Failed", message);
-      setCheckoutOrder(null);
-      setSubscribing(false);
-    }
-  };
-
   return (
-    <>
-      <Modal visible={visible && !checkoutOrder} animationType="slide" transparent onRequestClose={onClose}>
-        <View style={styles.overlay}>
-          <View style={styles.sheet}>
-            <View style={styles.grabber} />
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View style={styles.sheet}>
+          <View style={styles.grabber} />
 
-            {/* Header */}
-            <View style={styles.header}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.title}>
-                  {planType === "sell" ? "Sell Your Vehicle" : "Unlock Vehicle Actions"}
-                </Text>
-                <Text style={styles.subtitle}>
-                  {subChecked && hasActiveSub
-                    ? `${activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 'Active'} engagements available`
-                    : planType === "sell"
-                      ? "List your vehicle in the marketplace"
-                      : "3 active vehicle engagements at a time"}
-                </Text>
-              </View>
-              <Pressable onPress={onClose} style={styles.closeBtn}>
-                <Ionicons name="close" size={20} color={Colors.textSecondary} />
-              </Pressable>
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title}>
+                {planType === "sell" ? "Sell Your Vehicle" : "Unlock Vehicle Actions"}
+              </Text>
+              <Text style={styles.subtitle}>
+                {subChecked && hasActiveSub
+                  ? `${activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 'Active'} engagements available`
+                  : planType === "sell"
+                    ? "List your vehicle in the marketplace"
+                    : "3 active vehicle engagements at a time"}
+              </Text>
             </View>
+            <Pressable onPress={onClose} style={styles.closeBtn}>
+              <Ionicons name="close" size={20} color={Colors.textSecondary} />
+            </Pressable>
+          </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
-              {!subChecked ? (
-                <View style={{ padding: 40, alignItems: "center" }}>
-                  <ActivityIndicator size="large" color={Colors.primary} />
-                  <Text style={{ marginTop: 10, color: Colors.textSecondary }}>Checking subscription...</Text>
-                </View>
-              ) : hasActiveSub && planType !== "sell" ? (
-                <View>
-                  <View style={styles.activeCard}>
-                    <LinearGradient
-                      colors={[Colors.heroLight, Colors.hero]}
-                      style={styles.activeGrad}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                    >
-                      <View style={styles.activeIconWrap}>
-                        <Ionicons name="checkmark-circle" size={40} color="#fff" />
-                      </View>
-                      <Text style={styles.activeTitle}>Subscription Active</Text>
-                      <Text style={styles.activePlan}>{activeSub?.plan?.sp_name ?? "Standard Plan"}</Text>
-                      <View style={styles.usesRow}>
-                        {[1, 2, 3].map((n) => (
-                          <View
-                            key={n}
-                            style={[
-                              styles.usesDot,
-                              n <= (activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 3) ? styles.usesDotActive : styles.usesDotUsed,
-                            ]}
-                          />
-                        ))}
-                      </View>
-                      <Text style={styles.usesLabel}>
-                        {activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 'Active'} engagements left
-                      </Text>
-                    </LinearGradient>
-                  </View>
-                  <Pressable
-                    style={({ pressed }) => [styles.subBtn, { opacity: pressed ? 0.85 : 1 }]}
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onSuccess(); }}
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
+            {!subChecked ? (
+              <View style={{ padding: 40, alignItems: "center" }}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+                <Text style={{ marginTop: 10, color: Colors.textSecondary }}>Checking subscription...</Text>
+              </View>
+            ) : hasActiveSub && planType !== "sell" ? (
+              <View>
+                <View style={styles.activeCard}>
+                  <LinearGradient
+                    colors={[Colors.heroLight, Colors.hero]}
+                    style={styles.activeGrad}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
                   >
-                    <LinearGradient
-                      colors={[Colors.heroLight, Colors.hero]}
-                      style={styles.subBtnGrad}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                    >
-                      <Ionicons name="flash" size={16} color="#fff" />
-                      <Text style={styles.subBtnText}>Continue</Text>
-                    </LinearGradient>
-                  </Pressable>
-                </View>
-              ) : (
-                <View>
-                  <View style={styles.planCard}>
-                    <View style={styles.planBadge}>
-                      <Ionicons name="star" size={10} color="#fff" />
-                      <Text style={styles.planBadgeText}>{planType === "sell" ? "SELLER" : "SUBSCRIPTION"}</Text>
+                    <View style={styles.activeIconWrap}>
+                      <Ionicons name="checkmark-circle" size={40} color="#fff" />
                     </View>
-                    <Text style={styles.planName}>{defaultPlan.sp_name}</Text>
-                    <Text style={styles.planDesc}>
-                      {defaultPlan.sp_description || (planType === "sell" ? `List your vehicle for ${defaultPlan.sp_duration || 365} days` : `Bid or buy up to ${DISPLAY_USES} vehicles per day`)}
-                    </Text>
-                    <View style={styles.priceRow}>
-                      <Text style={styles.priceCur}>₹</Text>
-                      <Text style={styles.priceVal}>{defaultPlan.sp_price ? defaultPlan.sp_price.toLocaleString("en-IN") : "..."}</Text>
-                      <Text style={styles.priceNote}>{planType === "sell" ? ` / ${defaultPlan.sp_duration || 365} days` : " /day"}</Text>
+                    <Text style={styles.activeTitle}>Subscription Active</Text>
+                    <Text style={styles.activePlan}>{activeSub?.plan?.sp_name ?? "Standard Plan"}</Text>
+                    <View style={styles.usesRow}>
+                      {[1, 2, 3].map((n) => (
+                        <View
+                          key={n}
+                          style={[
+                            styles.usesDot,
+                            n <= (activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 3) ? styles.usesDotActive : styles.usesDotUsed,
+                          ]}
+                        />
+                      ))}
                     </View>
-                    <View style={styles.divider} />
-                    {(planType === "sell" ? [
-                      { icon: "car-sport", text: "List your vehicle in the marketplace" },
-                      { icon: "time", text: `Active for ${defaultPlan.sp_duration || 365} days` },
-                      { icon: "shield-checkmark", text: "Secure Razorpay payment" },
-                      { icon: "people", text: "Reach thousands of potential buyers" },
-                    ] : [
-                      { icon: "flash", text: `${DISPLAY_USES} vehicle transactions per day (bid or buy)` },
-                      { icon: "shield-checkmark", text: "Secure Razorpay payment" },
-                      { icon: "time", text: "Daily limit resets every day" },
-                      { icon: "car-sport", text: "Access all live auctions & buy now listings" },
-                    ]).map(({ icon, text }) => (
-                      <View key={text} style={styles.featureRow}>
-                        <View style={styles.featureIcon}>
-                          <Ionicons name={icon as any} size={14} color={Colors.primary} />
-                        </View>
-                        <Text style={styles.featureText}>{text}</Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  <View style={styles.infoBox}>
-                    <Ionicons name="information-circle-outline" size={14} color={Colors.info} />
-                    <Text style={styles.infoText}>
-                      {planType === "sell"
-                        ? `Your vehicle will be visible to buyers for ${defaultPlan.sp_duration || 365} days. Admin will review and approve your listing within 24 hours.`
-                        : `Each successful bid or purchase deducts one daily transaction. Your ${DISPLAY_USES} daily transactions reset at the start of each day. If you need more than ${DISPLAY_USES} in a day, purchase again.`}
+                    <Text style={styles.usesLabel}>
+                      {activeSub!.sub_remaining_uses ?? activeSub!.remaining_uses ?? 'Active'} engagements left
                     </Text>
-                  </View>
+                  </LinearGradient>
                 </View>
-              )}
-            </ScrollView>
-
-            {/* Footer — show Subscribe button when payment is needed */}
-            {subChecked && showPaymentOption && (
-              <View style={styles.footer}>
                 <Pressable
-                  style={({ pressed }) => [styles.subBtn, { opacity: (pressed || subscribing) ? 0.85 : 1 }]}
-                  onPress={handleSubscribe}
-                  disabled={subscribing || !defaultPlan.sp_id}
+                  style={({ pressed }) => [styles.subBtn, { opacity: pressed ? 0.85 : 1 }]}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onSuccess(); }}
                 >
                   <LinearGradient
                     colors={[Colors.heroLight, Colors.hero]}
@@ -314,40 +240,95 @@ export function SubscriptionModal({ visible, onClose, onSuccess, planType = "auc
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 0 }}
                   >
-                    {subscribing ? (
-                      <>
-                        <ActivityIndicator color="#fff" size="small" />
-                        <Text style={styles.subBtnText}>Opening Payment…</Text>
-                      </>
-                    ) : (
-                      <>
-                        <Ionicons name={planType === "sell" ? "car-sport" : "lock-open"} size={16} color="#fff" />
-                        <Text style={styles.subBtnText}>
-                          {planType === "sell" ? "Pay to List Vehicle" : "Subscribe"} — ₹{defaultPlan.sp_price ? defaultPlan.sp_price.toLocaleString("en-IN") : "..."}
-                        </Text>
-                      </>
-                    )}
+                    <Ionicons name="flash" size={16} color="#fff" />
+                    <Text style={styles.subBtnText}>Continue</Text>
                   </LinearGradient>
                 </Pressable>
-                <Text style={styles.secureText}>🔒 Secure payment via Razorpay</Text>
+              </View>
+            ) : (
+              <View>
+                <View style={styles.planCard}>
+                  <View style={styles.planBadge}>
+                    <Ionicons name="star" size={10} color="#fff" />
+                    <Text style={styles.planBadgeText}>{planType === "sell" ? "SELLER" : "SUBSCRIPTION"}</Text>
+                  </View>
+                  <Text style={styles.planName}>{defaultPlan.sp_name}</Text>
+                  <Text style={styles.planDesc}>
+                    {defaultPlan.sp_description || (planType === "sell" ? `List your vehicle for ${defaultPlan.sp_duration || 365} days` : `Bid or buy up to ${DISPLAY_USES} vehicles per day`)}
+                  </Text>
+                  <View style={styles.priceRow}>
+                    <Text style={styles.priceCur}>₹</Text>
+                    <Text style={styles.priceVal}>{defaultPlan.sp_price ? defaultPlan.sp_price.toLocaleString("en-IN") : "..."}</Text>
+                    <Text style={styles.priceNote}>{planType === "sell" ? ` / ${defaultPlan.sp_duration || 365} days` : " /day"}</Text>
+                  </View>
+                  <View style={styles.divider} />
+                  {(planType === "sell" ? [
+                    { icon: "car-sport", text: "List your vehicle in the marketplace" },
+                    { icon: "time", text: `Active for ${defaultPlan.sp_duration || 365} days` },
+                    { icon: "shield-checkmark", text: "Secure Razorpay payment" },
+                    { icon: "people", text: "Reach thousands of potential buyers" },
+                  ] : [
+                    { icon: "flash", text: `${DISPLAY_USES} vehicle transactions per day (bid or buy)` },
+                    { icon: "shield-checkmark", text: "Secure Razorpay payment" },
+                    { icon: "time", text: "Daily limit resets every day" },
+                    { icon: "car-sport", text: "Access all live auctions & buy now listings" },
+                  ]).map(({ icon, text }) => (
+                    <View key={text} style={styles.featureRow}>
+                      <View style={styles.featureIcon}>
+                        <Ionicons name={icon as any} size={14} color={Colors.primary} />
+                      </View>
+                      <Text style={styles.featureText}>{text}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <View style={styles.infoBox}>
+                  <Ionicons name="information-circle-outline" size={14} color={Colors.info} />
+                  <Text style={styles.infoText}>
+                    {planType === "sell"
+                      ? `Your vehicle will be visible to buyers for ${defaultPlan.sp_duration || 365} days. Admin will review and approve your listing within 24 hours.`
+                      : `Each successful bid or purchase deducts one daily transaction. Your ${DISPLAY_USES} daily transactions reset at the start of each day. If you need more than ${DISPLAY_USES} in a day, purchase again.`}
+                  </Text>
+                </View>
               </View>
             )}
-          </View>
+          </ScrollView>
+
+          {/* Footer — show Subscribe button when payment is needed */}
+          {subChecked && showPaymentOption && (
+            <View style={styles.footer}>
+              <Pressable
+                style={({ pressed }) => [styles.subBtn, { opacity: (pressed || subscribing) ? 0.85 : 1 }]}
+                onPress={handleSubscribe}
+                disabled={subscribing || !defaultPlan.sp_id}
+              >
+                <LinearGradient
+                  colors={[Colors.heroLight, Colors.hero]}
+                  style={styles.subBtnGrad}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  {subscribing ? (
+                    <>
+                      <ActivityIndicator color="#fff" size="small" />
+                      <Text style={styles.subBtnText}>Opening Payment…</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name={planType === "sell" ? "car-sport" : "lock-open"} size={16} color="#fff" />
+                      <Text style={styles.subBtnText}>
+                        {planType === "sell" ? "Pay to List Vehicle" : "Subscribe"} — ₹{defaultPlan.sp_price ? defaultPlan.sp_price.toLocaleString("en-IN") : "..."}
+                      </Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </Pressable>
+              <Text style={styles.secureText}>🔒 Secure payment via Razorpay</Text>
+            </View>
+          )}
         </View>
-      </Modal>
-      <RazorpayCheckoutModal
-        visible={!!checkoutOrder}
-        order={checkoutOrder}
-        onSuccess={handlePaymentSuccess}
-        onClose={(errorMsg?: string) => {
-          setCheckoutOrder(null);
-          setSubscribing(false);
-          if (errorMsg && !errorMsg.toLowerCase().includes("cancel")) {
-            Alert.alert("Payment Failed", errorMsg);
-          }
-        }}
-      />
-    </>
+      </View>
+    </Modal>
   );
 }
 

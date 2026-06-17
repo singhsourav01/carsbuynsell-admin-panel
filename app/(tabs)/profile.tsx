@@ -13,9 +13,8 @@ import * as ImagePicker from "expo-image-picker";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
-import { RazorpayCheckoutModal } from "@/components/RazorpayCheckoutModal";
 import { apiRequestDirect, getToken } from "@/lib/auth";
-import { fetchMySubscription, ActiveSubscription, CreateOrderResult, RazorpayPaymentResult } from "@/lib/subscription";
+import { fetchMySubscription, ActiveSubscription, CreateOrderResult, RazorpayPaymentResult, openNativeRazorpayCheckout } from "@/lib/subscription";
 
 const CATEGORIES = ["Sedan", "SUV", "Hatchback", "Luxury", "Sports", "Electric"];
 const SELL_VEHICLE_FEE = 800; // ₹800 listing fee
@@ -26,15 +25,6 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
   const [category, setCategory] = useState("SUV");
   const [basePrice, setBasePrice] = useState("");
   const [loading, setLoading] = useState(false);
-  const [checkoutOrder, setCheckoutOrder] = useState<CreateOrderResult | null>(null);
-
-  // Store form data for after payment
-  const [pendingSubmission, setPendingSubmission] = useState<{
-    title: string;
-    description: string;
-    category: string;
-    basePrice: string;
-  } | null>(null);
 
   const handleSubmit = async () => {
     if (!title.trim() || !basePrice.trim()) {
@@ -42,17 +32,9 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
       return;
     }
 
-    // Store form data for after payment
-    setPendingSubmission({
-      title: title.trim(),
-      description: description.trim(),
-      category,
-      basePrice: basePrice.trim()
-    });
-
     setLoading(true);
     try {
-      // Create Razorpay order for ₹800 listing fee
+      // Step 1: Create Razorpay order for ₹800 listing fee
       const res = await apiRequestDirect("POST", "http://65.2.10.30:3002/user/subscriptions/create-order", {
         plan_id: "sub_002", // Sell vehicle plan ID
         amount: SELL_VEHICLE_FEE * 100, // Amount in paise
@@ -62,34 +44,25 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
 
-      if (res.ok && data?.data) {
-        console.log("[SELL] Order created:", data.data);
-        setCheckoutOrder(data.data);
-      } else {
+      if (!res.ok || !data?.data) {
         Alert.alert("Error", data?.message || "Failed to create payment order.");
-        setPendingSubmission(null);
+        setLoading(false);
+        return;
       }
-    } catch (err) {
-      console.error("[SELL] Create order error:", err);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("Error", "Network error. Please try again.");
-      setPendingSubmission(null);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const handlePaymentSuccess = async (paymentResult: RazorpayPaymentResult) => {
-    setCheckoutOrder(null);
+      console.log("[SELL] Order created:", data.data);
+      const order = data.data as CreateOrderResult;
 
-    if (!pendingSubmission) {
-      Alert.alert("Error", "Form data was lost. Please try again.");
-      return;
-    }
+      // Step 2: Open native Razorpay checkout (supports UPI, GPay, PhonePe, etc.)
+      const paymentResult = await openNativeRazorpayCheckout(
+        order,
+        "CarsbuyNsell User",
+        "",
+        "",
+        "Vehicle Listing Fee - ₹800",
+      );
 
-    setLoading(true);
-    try {
-      // First verify the payment
+      // Step 3: Verify the payment on backend
       const verifyRes = await apiRequestDirect("POST", "http://65.2.10.30:3002/user/subscriptions/verify-payment", {
         razorpay_order_id: paymentResult.razorpay_order_id,
         razorpay_payment_id: paymentResult.razorpay_payment_id,
@@ -102,136 +75,116 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
 
       if (!verifyRes.ok) {
         Alert.alert("Payment Error", verifyData?.message || "Payment verification failed.");
-        setPendingSubmission(null);
         setLoading(false);
         return;
       }
 
       console.log("[SELL] Payment verified, submitting vehicle data...");
 
-      // Now submit the vehicle record
-      const res = await apiRequestDirect("POST", "http://65.2.10.30:3002/user/vehicle-records", {
-        uvr_title: pendingSubmission.title,
-        uvr_description: pendingSubmission.description,
-        uvr_category: pendingSubmission.category,
-        uvr_base_price: parseInt(pendingSubmission.basePrice, 10),
-        uvr_razorpay_payment_id: paymentResult.razorpay_payment_id, // Link payment to record
+      // Step 4: Submit the vehicle record
+      const submitRes = await apiRequestDirect("POST", "http://65.2.10.30:3002/user/vehicle-records", {
+        uvr_title: title.trim(),
+        uvr_description: description.trim(),
+        uvr_category: category,
+        uvr_base_price: parseInt(basePrice.trim(), 10),
+        uvr_razorpay_payment_id: paymentResult.razorpay_payment_id,
       }, true);
 
-      const rawText = await res.text();
-      let data: any = {};
-      try { data = JSON.parse(rawText); } catch { data = { message: rawText }; }
+      const submitRaw = await submitRes.text();
+      let submitData: any = {};
+      try { submitData = JSON.parse(submitRaw); } catch { submitData = { message: submitRaw }; }
 
-      if (res.ok) {
+      if (submitRes.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert(
           "Vehicle Submitted! 🎉",
           "Payment successful! Your vehicle has been submitted for review. Admin will contact you soon.",
           [{ text: "OK", style: "default" }]
         );
-        // Reset form
         setTitle("");
         setDescription("");
         setBasePrice("");
         setCategory("SUV");
-        setPendingSubmission(null);
         onClose();
       } else {
-        // Payment was successful but vehicle submission failed - refund scenario
         Alert.alert(
           "Submission Error",
-          data?.message || "Payment was successful but vehicle submission failed. Please contact support with your payment ID: " + paymentResult.razorpay_payment_id
+          submitData?.message || "Payment was successful but vehicle submission failed. Please contact support with your payment ID: " + paymentResult.razorpay_payment_id
         );
       }
-    } catch (err) {
-      console.error("[SELL] Submit error:", err);
+    } catch (err: any) {
+      console.error("[SELL] Error:", err);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("Error", "Network error during submission. Please contact support if payment was deducted.");
+      const message = err?.message || "Could not complete payment. Please try again.";
+      if (!message.toLowerCase().includes("cancel")) {
+        Alert.alert("Error", message);
+      }
     } finally {
       setLoading(false);
-      setPendingSubmission(null);
-    }
-  };
-
-  const handlePaymentClose = (errorMsg?: string) => {
-    setCheckoutOrder(null);
-    setPendingSubmission(null);
-    if (errorMsg) {
-      Alert.alert("Payment Failed", errorMsg);
     }
   };
 
   return (
-    <>
-      <Modal visible={visible && !checkoutOrder} animationType="slide" transparent onRequestClose={onClose}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <View style={sellS.overlay}>
-            <View style={sellS.sheet}>
-              <View style={sellS.grabber} />
-              <View style={sellS.header}>
-                <Text style={sellS.title}>Sell Your Vehicle</Text>
-                <Pressable onPress={onClose} style={sellS.closeBtn}>
-                  <Ionicons name="close" size={20} color={Colors.textSecondary} />
-                </Pressable>
-              </View>
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={sellS.form}>
-                <View style={sellS.group}>
-                  <Text style={sellS.label}>Vehicle Title</Text>
-                  <TextInput style={sellS.input} placeholder="e.g., Honda City ZX 2022" placeholderTextColor={Colors.textMuted} value={title} onChangeText={setTitle} />
-                </View>
-                <View style={sellS.group}>
-                  <Text style={sellS.label}>Description</Text>
-                  <TextInput style={[sellS.input, { height: 80, textAlignVertical: "top" }]} placeholder="Condition, features, history..." placeholderTextColor={Colors.textMuted} value={description} onChangeText={setDescription} multiline />
-                </View>
-                <View style={sellS.group}>
-                  <Text style={sellS.label}>Category</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={sellS.chipsRow}>
-                    {CATEGORIES.map(c => (
-                      <Pressable key={c} onPress={() => { setCategory(c); Haptics.selectionAsync(); }} style={[sellS.chip, category === c && sellS.chipActive]}>
-                        <Text style={[sellS.chipText, category === c && sellS.chipActiveText]}>{c}</Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                </View>
-                <View style={sellS.group}>
-                  <Text style={sellS.label}>Base Price (₹)</Text>
-                  <View style={sellS.priceWrap}>
-                    <Text style={sellS.rupee}>₹</Text>
-                    <TextInput style={sellS.priceInput} placeholder="e.g., 1500000" placeholderTextColor={Colors.textMuted} value={basePrice} onChangeText={setBasePrice} keyboardType="numeric" />
-                  </View>
-                </View>
-                <View style={sellS.feeNotice}>
-                  <Ionicons name="card-outline" size={16} color={Colors.primary} />
-                  <Text style={sellS.feeNoticeText}>₹{SELL_VEHICLE_FEE} listing fee</Text>
-                </View>
-                <View style={sellS.notice}>
-                  <Ionicons name="time-outline" size={15} color={Colors.warning} />
-                  <Text style={sellS.noticeText}>Admin will review and list your vehicle within 24 hours.</Text>
-                </View>
-                <Pressable style={({ pressed }) => [sellS.submitBtn, { opacity: pressed ? 0.85 : 1 }]} onPress={handleSubmit} disabled={loading}>
-                  <LinearGradient colors={[Colors.heroLight, Colors.hero]} style={sellS.submitGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-                    {loading ? <ActivityIndicator color="#fff" /> : (
-                      <>
-                        <Ionicons name="card" size={15} color="#fff" />
-                        <Text style={sellS.submitText}>Pay ₹{SELL_VEHICLE_FEE} & Submit</Text>
-                      </>
-                    )}
-                  </LinearGradient>
-                </Pressable>
-              </ScrollView>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <View style={sellS.overlay}>
+          <View style={sellS.sheet}>
+            <View style={sellS.grabber} />
+            <View style={sellS.header}>
+              <Text style={sellS.title}>Sell Your Vehicle</Text>
+              <Pressable onPress={onClose} style={sellS.closeBtn}>
+                <Ionicons name="close" size={20} color={Colors.textSecondary} />
+              </Pressable>
             </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={sellS.form}>
+              <View style={sellS.group}>
+                <Text style={sellS.label}>Vehicle Title</Text>
+                <TextInput style={sellS.input} placeholder="e.g., Honda City ZX 2022" placeholderTextColor={Colors.textMuted} value={title} onChangeText={setTitle} />
+              </View>
+              <View style={sellS.group}>
+                <Text style={sellS.label}>Description</Text>
+                <TextInput style={[sellS.input, { height: 80, textAlignVertical: "top" }]} placeholder="Condition, features, history..." placeholderTextColor={Colors.textMuted} value={description} onChangeText={setDescription} multiline />
+              </View>
+              <View style={sellS.group}>
+                <Text style={sellS.label}>Category</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={sellS.chipsRow}>
+                  {CATEGORIES.map(c => (
+                    <Pressable key={c} onPress={() => { setCategory(c); Haptics.selectionAsync(); }} style={[sellS.chip, category === c && sellS.chipActive]}>
+                      <Text style={[sellS.chipText, category === c && sellS.chipActiveText]}>{c}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+              <View style={sellS.group}>
+                <Text style={sellS.label}>Base Price (₹)</Text>
+                <View style={sellS.priceWrap}>
+                  <Text style={sellS.rupee}>₹</Text>
+                  <TextInput style={sellS.priceInput} placeholder="e.g., 1500000" placeholderTextColor={Colors.textMuted} value={basePrice} onChangeText={setBasePrice} keyboardType="numeric" />
+                </View>
+              </View>
+              <View style={sellS.feeNotice}>
+                <Ionicons name="card-outline" size={16} color={Colors.primary} />
+                <Text style={sellS.feeNoticeText}>₹{SELL_VEHICLE_FEE} listing fee</Text>
+              </View>
+              <View style={sellS.notice}>
+                <Ionicons name="time-outline" size={15} color={Colors.warning} />
+                <Text style={sellS.noticeText}>Admin will review and list your vehicle within 24 hours.</Text>
+              </View>
+              <Pressable style={({ pressed }) => [sellS.submitBtn, { opacity: pressed ? 0.85 : 1 }]} onPress={handleSubmit} disabled={loading}>
+                <LinearGradient colors={[Colors.heroLight, Colors.hero]} style={sellS.submitGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                  {loading ? <ActivityIndicator color="#fff" /> : (
+                    <>
+                      <Ionicons name="card" size={15} color="#fff" />
+                      <Text style={sellS.submitText}>Pay ₹{SELL_VEHICLE_FEE} & Submit</Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </Pressable>
+            </ScrollView>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Razorpay Checkout Modal */}
-      <RazorpayCheckoutModal
-        visible={!!checkoutOrder}
-        order={checkoutOrder}
-        onSuccess={handlePaymentSuccess}
-        onClose={handlePaymentClose}
-      />
-    </>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 

@@ -1,18 +1,9 @@
 import { apiRequestDirect } from "./auth";
-import * as WebBrowser from "expo-web-browser";
-import * as Linking from "expo-linking";
-
-// Required for web browser popups to communicate back to the main app tab
-WebBrowser.maybeCompleteAuthSession();
+import RazorpayCheckout from "react-native-razorpay";
 
 // ── Real backend (port 8002) handles all subscription API logic ──────────────
 const SUB_BASE = "http://65.2.10.30:3002";
 const SUB_PATH = "/user/subscriptions";
-
-// ── Local Express server (port 5000) serves the Razorpay checkout HTML page ──
-// NOTE: This must remain 5000, because the real backend (8002) does not have
-// the razorpay-checkout.html file.
-const LOCAL_SERVER = process.env.EXPO_PUBLIC_LOCAL_SERVER || "http://65.2.10.30:3002";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -136,76 +127,72 @@ export async function createSubscriptionOrder(plan_id: string): Promise<CreateOr
 }
 
 /**
- * Opens the Razorpay Standard Checkout in the device browser via expo-web-browser.
+ * Opens the Razorpay Native Checkout using react-native-razorpay.
+ *
+ * This uses the native Android/iOS SDK which supports:
+ *  - UPI Intent (Google Pay, PhonePe, Paytm, etc.)
+ *  - Cards, Net Banking, Wallets
+ *  - Proper native payment sheet experience
  *
  * Flow:
- *  1. Build URL to LOCAL_SERVER/razorpay-checkout with order params as query string
- *  2. Open via openAuthSessionAsync — waits for the carsbuynsell:// deep-link redirect
- *  3. Razorpay modal opens in browser; buyer completes payment
- *  4. On success, the HTML page redirects to:
- *       carsbuynsell://payment-callback?status=success&razorpay_payment_id=...
- *  5. We parse the params and return them
+ *  1. Create order on backend → get order_id, key_id, amount
+ *  2. Open native Razorpay checkout with these details
+ *  3. On success → returns payment_id, order_id, signature
+ *  4. Verify signature on backend → activate subscription
  */
-export async function openRazorpayCheckout(
+export async function openNativeRazorpayCheckout(
     order: CreateOrderResult,
     userName = "CarsbuyNsell User",
     userEmail = "",
+    userPhone = "",
+    description = "CarsbuyNsell Subscription",
 ): Promise<RazorpayPaymentResult> {
-    const redirectUrl = Linking.createURL("payment-callback");
+    console.log("[RZP-Native] Opening checkout for order:", order.razorpay_order_id);
+    console.log("[RZP-Native] Amount (paise):", order.amount, "Key:", order.key_id);
 
-    const params = new URLSearchParams({
-        order_id: order.razorpay_order_id,
-        amount: String(order.amount),
+    const options = {
+        description: description,
+        image: "https://carsbuynsell.com/logo.png",
         currency: order.currency || "INR",
-        key_id: order.key_id,
-        name: userName,
-        email: userEmail,
-        redirect_url: redirectUrl,
-    });
+        key: order.key_id,
+        amount: String(order.amount), // Razorpay native SDK expects string
+        name: "CarsbuyNsell",
+        order_id: order.razorpay_order_id,
+        prefill: {
+            email: userEmail || "user@carsbuynsell.com",
+            contact: userPhone || "",
+            name: userName,
+        },
+        theme: { color: "#3D5BD9" },
+    };
 
-    const checkoutUrl = `${LOCAL_SERVER}/razorpay-checkout?${params.toString()}`;
+    console.log("[RZP-Native] Options:", JSON.stringify(options));
 
-    console.log("[RZP] Opening:", checkoutUrl);
-    console.log("[RZP] Redirect:", redirectUrl);
+    try {
+        const result = await RazorpayCheckout.open(options);
+        console.log("[RZP-Native] Payment success:", JSON.stringify(result));
 
-    const result = await WebBrowser.openAuthSessionAsync(checkoutUrl, redirectUrl, {
-        showInRecents: true,
-        preferEphemeralSession: false,
-    });
-
-    console.log("[RZP] Browser result type:", result.type);
-
-    if (result.type === "cancel") {
-        throw new Error("Payment was cancelled.");
-    }
-    if (result.type !== "success" || !result.url) {
-        throw new Error("Payment window closed before completion.");
-    }
-
-    // Parse: carsbuynsell://payment-callback?status=success&razorpay_payment_id=...
-    const parsed = Linking.parse(result.url);
-    const q = parsed.queryParams ?? {};
-    console.log("[RZP] Callback params:", q);
-
-    const status = q.status as string;
-
-    if (status === "success") {
-        const paymentId = q.razorpay_payment_id as string;
-        const orderId = q.razorpay_order_id as string;
-        const signature = q.razorpay_signature as string;
-        if (!paymentId || !orderId || !signature) {
+        // react-native-razorpay returns: { razorpay_payment_id, razorpay_order_id, razorpay_signature }
+        if (!result.razorpay_payment_id || !result.razorpay_signature) {
             throw new Error("Payment succeeded but response is incomplete. Contact support.");
         }
-        return { razorpay_payment_id: paymentId, razorpay_order_id: orderId, razorpay_signature: signature };
-    }
 
-    if (status === "failed") {
-        const desc = q.error_description as string || "Payment failed";
-        const reason = q.error_reason as string || "";
-        throw new Error(`${desc}${reason ? ` (${reason})` : ""}`);
-    }
+        return {
+            razorpay_payment_id: result.razorpay_payment_id,
+            razorpay_order_id: result.razorpay_order_id || order.razorpay_order_id,
+            razorpay_signature: result.razorpay_signature,
+        };
+    } catch (error: any) {
+        console.error("[RZP-Native] Payment error:", JSON.stringify(error));
 
-    throw new Error("Unexpected payment result. Please try again.");
+        // react-native-razorpay error structure: { code, description }
+        if (error?.code === 0 || error?.description?.toLowerCase?.()?.includes("cancel")) {
+            throw new Error("Payment was cancelled.");
+        }
+
+        const errorMsg = error?.description || error?.message || "Payment failed at gateway";
+        throw new Error(errorMsg);
+    }
 }
 
 /**
