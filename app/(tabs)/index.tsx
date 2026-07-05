@@ -9,7 +9,6 @@ import {
   Dimensions,
   RefreshControl,
   ActivityIndicator,
-  TextInput,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,6 +21,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { formatCurrency } from "@/utils/formatters";
 import { sortCategoriesByPreferredSequence } from "@/utils/category-order";
 import { CountdownTimer } from "@/components/CountdownTimer";
+import { ListingSearchFilters, type VehicleFilters } from "@/components/ListingSearchFilters";
 import { apiRequestDirect } from "@/lib/auth";
 
 const { width } = Dimensions.get("window");
@@ -116,13 +116,20 @@ function RecentCard({ item }: { item: any }) {
 }
 const MemoRecentCard = memo(RecentCard);
 
+const EMPTY_FILTERS: VehicleFilters = {
+  fuelType: [],
+  transmission: [],
+  bodyType: [],
+  ownership: [],
+};
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [activeCategory, setActiveCategory] = useState("all");
   const [featuredIdx, setFeaturedIdx] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
+  const [appliedFilters, setAppliedFilters] = useState<VehicleFilters>(EMPTY_FILTERS);
 
   // API data
   const [featured, setFeatured] = useState<any[]>([]);
@@ -133,6 +140,14 @@ export default function HomeScreen() {
   const [page, setPage] = useState(1);
   const [hasNextPage, setHasNextPage] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+    }, 350);
+    return () => clearTimeout(timeout);
+  }, [searchQuery]);
 
 const fetchHome = useCallback(async (isRefresh = false) => {
   if (isRefresh) setIsRefreshing(true);
@@ -168,57 +183,51 @@ const fetchHome = useCallback(async (isRefresh = false) => {
   }
 }, []);
 
-const fetchRecentFirstPage = async () => {
+const buildListingsUrl = useCallback((pageNum: number) => {
+  const params = new URLSearchParams();
+  if (debouncedSearch) params.set("search", debouncedSearch);
+  if (activeCategory !== "all") params.set("category", activeCategory);
+  if (appliedFilters.fuelType.length > 0) params.set("fuel_type", appliedFilters.fuelType.join(","));
+  if (appliedFilters.transmission.length > 0) params.set("transmission", appliedFilters.transmission.join(","));
+  if (appliedFilters.bodyType.length > 0) params.set("body_type", appliedFilters.bodyType.join(","));
+  if (appliedFilters.ownership.length > 0) params.set("ownership", appliedFilters.ownership.join(","));
+  params.set("page", String(pageNum));
+  return `http://65.2.10.30:3002/user/listings?${params.toString()}`;
+}, [debouncedSearch, activeCategory, appliedFilters]);
+
+const fetchListings = useCallback(async (isRefresh = false) => {
+  if (isRefresh) setIsRefreshing(true);
+
   try {
-    const res = await apiRequestDirect(
-      "GET",
-      "http://65.2.10.30:3002/user/home/recent?page=1"
-    );
-
+    const url = buildListingsUrl(1);
+    const res = await apiRequestDirect("GET", url);
     const rawText = await res.text();
-
     let json: any = {};
-    try {
-      json = JSON.parse(rawText);
-    } catch {}
-
+    try { json = JSON.parse(rawText); } catch {}
     if (res.ok && json?.data) {
-      setRecent(json.data.data || []);
-
+      setRecent(json.data.data || json.data.listings || []);
       setPage(1);
-
-      setHasNextPage(
-        json.data.pagination?.hasNextPage ?? false
-      );
+      setHasNextPage(json.data.pagination?.hasNextPage ?? false);
     }
-
   } catch {}
-};
 
-const loadMoreRecent = async () => {
+  setIsLoading(false);
+  setIsRefreshing(false);
+}, [buildListingsUrl]);
+
+const loadMoreRecent = useCallback(async () => {
   if (loadingMore || !hasNextPage) return;
-
   setLoadingMore(true);
 
   try {
     const nextPage = page + 1;
-
-    const res = await apiRequestDirect(
-      "GET",
-      `http://65.2.10.30:3002/user/home/recent?page=${nextPage}`
-    );
-
+    const url = buildListingsUrl(nextPage);
+    const res = await apiRequestDirect("GET", url);
     const rawText = await res.text();
-
     let json: any = {};
-    try {
-      json = JSON.parse(rawText);
-    } catch {}
-
+    try { json = JSON.parse(rawText); } catch {}
     if (res.ok && json?.data) {
-      const newListings = json.data.data || [];
-
-      // prevent duplicate append if API returns empty
+      const newListings = json.data.data || json.data.listings || [];
       if (newListings.length > 0) {
         setRecent(prev => [...prev, ...newListings]);
         setPage(nextPage);
@@ -228,33 +237,40 @@ const loadMoreRecent = async () => {
   } catch {}
 
   setLoadingMore(false);
-};
+}, [loadingMore, hasNextPage, page, buildListingsUrl]);
 
 useEffect(() => {
   fetchHome();
-  fetchRecentFirstPage();
 }, [fetchHome]);
+
+useEffect(() => { fetchListings(); }, [fetchListings]);
 
 const handleRefresh = useCallback(() => {
   setPage(1);
   setHasNextPage(true);
-
   fetchHome(true);
-  fetchRecentFirstPage();
+  fetchListings(true);
+}, [fetchHome, fetchListings]);
+  // Helper: search item against query
+  function matchesQuery(item: any, query: string): boolean {
+    const q = query.toLowerCase();
+    return (
+      item.lst_title?.toLowerCase().includes(q) ||
+      item.lst_location?.toLowerCase().includes(q) ||
+      item.location?.toLowerCase().includes(q) ||
+      item.lst_city?.toLowerCase().includes(q) ||
+      item.city?.toLowerCase().includes(q)
+    );
+  }
 
-}, [fetchHome]);
   // Filter by search + category
   const query = searchQuery.trim().toLowerCase();
 
   const filteredFeatured = query
-    ? featured.filter((item) => item.lst_title?.toLowerCase().includes(query))
+    ? featured.filter((item) => matchesQuery(item, query))
     : featured;
 
-  const filteredRecent = recent.filter((item) => {
-    const matchCategory = activeCategory === "all" || item.lst_category_id === activeCategory;
-    const matchSearch = !query || item.lst_title?.toLowerCase().includes(query);
-    return matchCategory && matchSearch;
-  });
+  const filteredRecent = recent;
 
   const renderRecent = useCallback(({ item }: { item: any }) => <MemoRecentCard item={item} />, []);
   const keyExtractor = useCallback((item: any) => item.lst_id, []);
@@ -342,52 +358,19 @@ const handleRefresh = useCallback(() => {
 );
   const renderHeader = () => (
   <>
-    {/* HERO SECTION */}
-
-    <View style={styles.heroBanner}>
-      <Text style={styles.heroTitle}>
-        Find your next big profit.
-      </Text>
-
-      <Text style={styles.heroSubtitle}>
-        Browse verified dealer-exclusive listings.
-      </Text>
-
-      <View
-        style={[
-          styles.heroSearch,
-          searchFocused && styles.heroSearchFocused,
-        ]}
-      >
-        <Ionicons
-          name="search-outline"
-          size={18}
-          color={
-            searchFocused
-              ? Colors.primary
-              : "rgba(255,255,255,0.5)"
-          }
-        />
-
-        <TextInput
-          style={[
-            styles.heroSearchInput,
-            searchFocused &&
-              styles.heroSearchInputFocused,
-          ]}
-          placeholder="Search make, model..."
-          placeholderTextColor={
-            searchFocused
-              ? Colors.textMuted
-              : "rgba(255,255,255,0.5)"
-          }
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          onFocus={() => setSearchFocused(true)}
-          onBlur={() => setSearchFocused(false)}
-        />
-      </View>
-    </View>
+    <ListingSearchFilters
+      title="Find your next big profit."
+      subtitle="Browse verified dealer-exclusive listings."
+      searchPlaceholder="Search make, model, location..."
+      heroColor={Colors.hero}
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+      categories={categories}
+      selectedCategory={activeCategory}
+      onCategorySelect={setActiveCategory}
+      appliedFilters={appliedFilters}
+      onApplyFilters={setAppliedFilters}
+    />
 
     {/* QUICK ACTIONS */}
 
@@ -435,10 +418,6 @@ const handleRefresh = useCallback(() => {
     {/* FEATURED SECTION */}
 
     {renderFeaturedSection()}
-
-    {/* CATEGORY SECTION */}
-
-    {renderCategorySection()}
 
     {/* RECENT HEADER */}
 

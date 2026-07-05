@@ -72,7 +72,9 @@ const FILTER_SECTIONS: FilterSection[] = [
       { label: "1st Owner", value: "FIRST_OWNER" },
       { label: "2nd Owner", value: "SECOND_OWNER" },
       { label: "3rd Owner", value: "THIRD_OWNER" },
-      { label: "4th+ Owner", value: "FOURTH_OWNER_PLUS" },
+      { label: "4th Owner", value: "FOURTH_OWNER" },
+      { label: "5th Owner", value: "FIFTH_OWNER" },
+      { label: "6th Owner", value: "SIXTH_OWNER" },
     ],
   },
 ];

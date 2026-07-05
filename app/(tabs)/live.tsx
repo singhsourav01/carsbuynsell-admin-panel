@@ -3,6 +3,7 @@ import {
   View, Text, FlatList, Pressable, StyleSheet, Modal,
   TextInput, ActivityIndicator, Alert, RefreshControl,
 } from "react-native";
+import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -107,11 +108,11 @@ function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: any | 
   );
 }
 
-const AuctionCard = memo(function AuctionCard({ item, onPress }: { item: any; onPress: () => void }) {
+const AuctionCard = memo(function AuctionCard({ item, onBidNow }: { item: any; onBidNow: () => void }) {
   const imageUri = getFirstListingImageUri(item);
   const currentBid = Number(item.lst_current_bid || item.lst_price || 0);
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.card, { opacity: pressed ? 0.95 : 1 }]}>
+    <Pressable onPress={() => { router.push(`/listing/${item.lst_id}` as any); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }} style={({ pressed }) => [styles.card, { opacity: pressed ? 0.95 : 1 }]}>
       <View style={styles.imgWrap}>
         {imageUri ? (
           <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
@@ -133,7 +134,7 @@ const AuctionCard = memo(function AuctionCard({ item, onPress }: { item: any; on
         </View>
         <View style={styles.bottomRow}>
           <View><Text style={styles.bidLabel}>Current Bid</Text><Text style={styles.bidValue}>{formatCurrency(currentBid)}</Text></View>
-          <Pressable onPress={onPress} style={styles.bidNowBtn}><LinearGradient colors={[Colors.heroLight, Colors.hero]} style={styles.bidNowGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}><Ionicons name="flash" size={13} color="#fff" /><Text style={styles.bidNowText}>Bid Now</Text></LinearGradient></Pressable>
+          <Pressable onPress={(e) => { e.stopPropagation?.(); onBidNow(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }} style={styles.bidNowBtn}><LinearGradient colors={[Colors.heroLight, Colors.hero]} style={styles.bidNowGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}><Ionicons name="flash" size={13} color="#fff" /><Text style={styles.bidNowText}>Bid Now</Text></LinearGradient></Pressable>
         </View>
       </View>
     </Pressable>
@@ -259,7 +260,7 @@ export default function LiveScreen() {
   }));
 
   const keyExtractor = useCallback((item: any) => item.lst_id, []);
-  const renderItem = useCallback(({ item }: { item: any }) => <AuctionCard item={item} onPress={() => handleBidNowPress(item)} />, [handleBidNowPress]);
+  const renderItem = useCallback(({ item }: { item: any }) => <AuctionCard item={item} onBidNow={() => handleBidNowPress(item)} />, [handleBidNowPress]);
 
   return (
     <View style={[styles.container, { paddingTop: topPad }]}>
