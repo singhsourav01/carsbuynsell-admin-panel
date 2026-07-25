@@ -215,7 +215,8 @@ export default function ProfileScreen() {
   // Profile photo state
   const [editPhotoUri, setEditPhotoUri] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [pendingFileId, setPendingFileId] = useState<string | null>(null); // file_id from upload service, sent on Save
+  const [pendingFileId, setPendingFileId] = useState<string | null>(null);
+  const [pendingFileUrl, setPendingFileUrl] = useState<string | null>(null);
 
   // Get user ID (could be stored as 'id', 'user_id', etc.)
   const userId = (user as any)?.id || (user as any)?.user_id || (user as any)?.uld_user_id || "";
@@ -267,28 +268,26 @@ export default function ProfileScreen() {
   useEffect(() => { loadSubscription(); }, [loadSubscription]);
   console.log(profile, " here is prfoile")
   const openEditProfile = () => {
-    // Map API fields: user_full_name, user_email, user_primary_phone, user_gender
     setEditName(profile?.user_full_name || profile?.full_name || user?.fullName || "");
     setEditEmail(profile?.user_email || profile?.email || user?.email || "");
     setEditPhone(profile?.user_primary_phone || profile?.phone || user?.phone || "");
     setEditGender(profile?.user_gender || profile?.gender || "");
-    setEditPhotoUri(profile?.user_profile_image_file_id || null);   // reset local preview
-    setPendingFileId(profile?.user_profile_image_file_id || null);  // reset any pending file upload
+    setEditPhotoUri(displayImage || null);
+    setPendingFileId(profile?.user_profile_image_file_id || null);
+    setPendingFileUrl(null);
     setEditVisible(true);
   };
 
   const pickAndUploadPhoto = async () => {
     try {
-      // Request media library permission
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
         Alert.alert("Permission Required", "Please allow access to your photo library to update your profile picture.");
         return;
       }
 
-      // Launch image picker
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ["images"],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -297,13 +296,11 @@ export default function ProfileScreen() {
       if (result.canceled || !result.assets?.length) return;
 
       const asset = result.assets[0];
-      // Show preview immediately — never clear this after picking
       setEditPhotoUri(asset.uri);
-      setPendingFileId(null); // reset any old file id
+      setPendingFileId(null);
       setUploadingPhoto(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-      // Guard: user must be logged in with a resolvable ID
       if (!userId) {
         Alert.alert("Error", "Could not determine your user ID. Please log out and log back in.");
         return;
@@ -312,8 +309,6 @@ export default function ProfileScreen() {
       const filename = asset.uri.split("/").pop() || "profile.jpg";
       const mimeType = asset.mimeType || "image/jpeg";
 
-      // Step 1: Read the image file into a real Blob via XHR
-      // (The { uri, name, type } RN shorthand can silently fail in some Expo environments)
       console.log("[PHOTO] Reading image as blob from URI:", asset.uri);
       const imageBlob: Blob = await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -325,32 +320,33 @@ export default function ProfileScreen() {
       });
       console.log("[PHOTO] Blob size:", imageBlob.size, "type:", imageBlob.type);
 
-      // Step 2: Build multipart FormData with the real Blob
-      // Middleware checks: files?.files (field "files") and fields?.type (field "type")
       const formData = new FormData();
       formData.append("files", imageBlob, filename);
       formData.append("type", "portfolio");
 
-      // Step 3: POST to file service
       const token = await getToken();
       console.log("[PHOTO] Uploading → userId:", userId, "token:", token ? "present" : "missing");
 
-      const uploadData: any = await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", `http://65.2.10.30:3003/file/upload?id=${userId}`);
-        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-        // Do NOT set Content-Type — XHR sets multipart boundary automatically
-        xhr.onload = () => {
-          console.log("[PHOTO] Upload status:", xhr.status, "response:", xhr.responseText.substring(0, 300));
-          try { resolve(JSON.parse(xhr.responseText)); }
-          catch { resolve({ message: xhr.responseText, statusCode: xhr.status }); }
-        };
-        xhr.onerror = () => reject(new Error("Network error during upload"));
-        xhr.send(formData);
+      const { fetch } = await import("expo/fetch");
+      const uploadUrl = `https://admin.carsbuynsell.com/api/file/upload?user_id=${userId}`;
+
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const res = await fetch(uploadUrl, {
+        method: "POST",
+        headers,
+        body: formData as any,
       });
 
-      if (uploadData?.statusCode && uploadData.statusCode !== 200) {
-        Alert.alert("Upload Failed", uploadData?.message || "Failed to upload photo. Please try again.");
+      const rawText = await res.text();
+      console.log("[PHOTO] Upload status:", res.status, "response:", rawText.substring(0, 300));
+
+      let uploadData: any = {};
+      try { uploadData = JSON.parse(rawText); } catch { uploadData = { message: rawText }; }
+
+      if (!res.ok) {
+        Alert.alert("Upload Failed", uploadData?.message || `Server returned ${res.status}. Please try again.`);
         return;
       }
 
@@ -366,12 +362,16 @@ export default function ProfileScreen() {
       }
 
       console.log("[PHOTO] File uploaded successfully, file_id:", fileId);
+      const fileUrl = uploadData?.data?.[0]?.file_url || null;
       setPendingFileId(fileId);
+      setPendingFileUrl(fileUrl);
+      if (fileUrl && !editPhotoUri?.startsWith("file://")) {
+        setEditPhotoUri(`https://admin.carsbuynsell.com/${fileUrl}`);
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err: any) {
       console.error("[PHOTO] Upload error:", err);
       Alert.alert("Error", "Something went wrong uploading your photo. Please try again.");
-      // Photo preview stays so user can retry — do NOT clear editPhotoUri
     } finally {
       setUploadingPhoto(false);
     }
@@ -385,10 +385,12 @@ export default function ProfileScreen() {
     }
     setSaving(true);
     try {
+      const payload: Record<string, string> = { profile_image_file_id: pendingFileId };
+      if (pendingFileUrl) payload.profile_image_url = pendingFileUrl;
       const res = await apiRequestDirect(
         "PUT",
         "http://65.2.10.30:3002/user/users-profile",
-        { profile_image_file_id: pendingFileId },
+        payload,
         true
       );
       const rawText = await res.text();
@@ -410,7 +412,15 @@ export default function ProfileScreen() {
   const displayName = profile?.user_full_name || profile?.full_name || user?.fullName || "User";
   const displayEmail = profile?.user_email || profile?.email || user?.email || "";
   const displayPhone = profile?.user_primary_phone || profile?.phone || user?.phone || "";
-  const displayImage = profile?.user_profile_image_file_id || "";
+
+  const rawImageUrl = profile?.user_profile_image_url
+    || profile?.profile_image_url
+    || profile?.profile_image
+    || null;
+  const rawImageFileId = profile?.user_profile_image_file_id || "";
+  const displayImage = rawImageUrl
+    || (pendingFileUrl ? `https://admin.carsbuynsell.com/${pendingFileUrl}` : "")
+    || (rawImageFileId && rawImageFileId.startsWith("http") ? rawImageFileId : "");
 
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().substring(0, 2);
 
@@ -431,7 +441,11 @@ export default function ProfileScreen() {
         {/* Profile Card — tap to edit */}
         <Pressable onPress={openEditProfile} style={styles.profileCard}>
           <LinearGradient colors={[Colors.hero, Colors.heroLight]} style={styles.avatar} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-            <Image source={{ uri: displayImage }} style={styles.avatar} />
+            {displayImage ? (
+              <Image source={{ uri: displayImage }} style={styles.avatar} />
+            ) : (
+              <Text style={styles.avatarText}>{initials}</Text>
+            )}
           </LinearGradient>
           {profileLoading ? (
             <ActivityIndicator color={Colors.primary} style={{ marginTop: 8 }} />
@@ -540,20 +554,13 @@ export default function ProfileScreen() {
                 {/* Profile Photo */}
                 <View style={editS.photoSection}>
                   <Pressable onPress={pickAndUploadPhoto} disabled={uploadingPhoto} style={editS.photoWrap}>
-                    {(() => {
-                      const photoUrl = editPhotoUri ||
-                        profile?.user_profile_image_url ||
-                        profile?.profile_image_url ||
-                        profile?.profile_image ||
-                        null;
-                      return photoUrl ? (
-                        <Image source={{ uri: photoUrl }} style={editS.photoImg} />
-                      ) : (
-                        <LinearGradient colors={[Colors.hero, Colors.heroLight]} style={editS.photoPlaceholder} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                          <Text style={editS.photoInitials}>{initials}</Text>
-                        </LinearGradient>
-                      );
-                    })()}
+                    {editPhotoUri ? (
+                      <Image source={{ uri: editPhotoUri }} style={editS.photoImg} />
+                    ) : (
+                      <LinearGradient colors={[Colors.hero, Colors.heroLight]} style={editS.photoPlaceholder} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                        <Text style={editS.photoInitials}>{initials}</Text>
+                      </LinearGradient>
+                    )}
                     {/* Overlay badge */}
                     <View style={editS.photoBadge}>
                       {uploadingPhoto

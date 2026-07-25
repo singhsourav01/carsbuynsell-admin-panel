@@ -38,6 +38,7 @@ export default function LoginScreen() {
   const { login } = useAuth();
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -200,19 +201,29 @@ export default function LoginScreen() {
           </View>
           <Text style={styles.fieldLabel}>ENTER PASSWORD</Text>
           <View style={styles.phoneRow}>
-
             <TextInput
-              style={styles.phoneInput}
+              style={[styles.phoneInput, { flex: 1 }]}
               placeholder="Admin@123"
               placeholderTextColor={Colors.textMuted}
               value={password}
               onChangeText={setPassword}
-              secureTextEntry={true}
+              secureTextEntry={!showPassword}
               keyboardType="default"
               maxLength={15}
               returnKeyType="done"
               onSubmitEditing={handleSignin}
             />
+            <Pressable
+              onPress={() => setShowPassword(!showPassword)}
+              hitSlop={8}
+              style={{ paddingHorizontal: 14, justifyContent: "center" }}
+            >
+              <Ionicons
+                name={showPassword ? "eye-off-outline" : "eye-outline"}
+                size={20}
+                color={Colors.textMuted}
+              />
+            </Pressable>
           </View>
 
           <Pressable
