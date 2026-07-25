@@ -1,4 +1,4 @@
-package com.myapp
+package com.carsbuynsell.app
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

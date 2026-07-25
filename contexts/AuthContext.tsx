@@ -6,7 +6,7 @@ import React, {
   useMemo,
   ReactNode,
 } from "react";
-import { getToken, getUser, deleteToken, storeToken, storeUser, storeRefreshToken, getRefreshToken } from "@/lib/auth";
+import { getToken, getUser, deleteToken, storeToken, storeUser, storeRefreshToken, getRefreshToken, setOnLogoutCallback } from "@/lib/auth";
 import { router } from "expo-router";
 
 interface User {
@@ -51,6 +51,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
       }
     })();
+  }, []);
+
+  // Wire up the global logout callback so the auto-refresh logic
+  // can force a logout + redirect when the refresh token itself is dead.
+  useEffect(() => {
+    setOnLogoutCallback(() => {
+      deleteToken();
+      setToken(null);
+      setRToken(null);
+      setUser(null);
+      router.replace("/(auth)/login");
+    });
   }, []);
 
   const login = async (newToken: string, newUser: User, newRefreshToken?: string) => {
