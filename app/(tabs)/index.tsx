@@ -56,7 +56,7 @@ function FeaturedCard({ item, isActive }: { item: any; isActive: boolean }) {
       style={[styles.featuredCard, { width: width - 48, marginRight: 16 }]}
     >
       {imageUri ? (
-        <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} contentFit="contain" transition={300} />
+        <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
       ) : (
         <LinearGradient colors={[Colors.hero, Colors.heroDark]} style={StyleSheet.absoluteFill} />
       )}
@@ -98,7 +98,7 @@ function RecentCard({ item }: { item: any }) {
     >
       <View style={styles.recentImgWrap}>
         {imageUri ? (
-          <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} contentFit="contain" />
+          <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={300} />
         ) : (
           <LinearGradient colors={[Colors.hero, Colors.heroDark]} style={StyleSheet.absoluteFill} />
         )}
@@ -505,7 +505,7 @@ const styles = StyleSheet.create({
   quickActionLabel: { fontSize: 10, fontFamily: "Urbanist_700Bold", color: Colors.text, textAlign: "center", lineHeight: 14 },
   featuredScroll: { paddingHorizontal: 16 },
   featuredCard: {
-    height: 200, borderRadius: 16, overflow: "hidden", position: "relative",
+    aspectRatio: 16 / 9, borderRadius: 16, overflow: "hidden", position: "relative",
     shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 4,
   },
   featuredGradient: { ...StyleSheet.absoluteFillObject, top: "30%" },
@@ -538,7 +538,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card, borderRadius: 14, overflow: "hidden",
     shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
   },
-  recentImgWrap: { height: 110, position: "relative" },
+  recentImgWrap: { aspectRatio: 4 / 3, position: "relative" },
   recentBadge: { position: "absolute", top: 8, left: 8, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 3 },
   recentBadgeText: { fontSize: 9, fontFamily: "Urbanist_700Bold", color: "#fff" },
   recentInfo: { padding: 10, gap: 3 },

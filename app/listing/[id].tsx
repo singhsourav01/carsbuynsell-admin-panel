@@ -270,7 +270,7 @@ export default function ListingDetailScreen() {
                                 <Image
                                     key={i}
                                     source={{ uri }}
-                                    style={{ width, height: 320 }}
+                                    style={{ width, aspectRatio: 4 / 3 }}
                                     contentFit="cover"
                                     transition={300}
                                 />
@@ -567,7 +567,7 @@ const s = StyleSheet.create({
     backLinkText: { fontSize: 14, fontFamily: "Urbanist_600SemiBold", color: Colors.primary },
 
     // Image Section
-    imageSection: { height: 320, position: "relative", backgroundColor: Colors.surface },
+    imageSection: { aspectRatio: 4 / 3, position: "relative", backgroundColor: Colors.surface },
     imagePlaceholder: { width: "100%", height: "100%", alignItems: "center", justifyContent: "center", gap: 8 },
     noImageText: { fontSize: 14, fontFamily: "Urbanist_500Medium", color: "rgba(255,255,255,0.6)" },
     topGradient: { position: "absolute", top: 0, left: 0, right: 0, height: 100 },

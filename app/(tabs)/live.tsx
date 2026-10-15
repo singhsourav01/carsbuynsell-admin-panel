@@ -313,7 +313,7 @@ const styles = StyleSheet.create({
   loadWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
   list: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 100, gap: 16 },
   card: { backgroundColor: Colors.card, borderRadius: 20, overflow: "hidden", borderWidth: 1, borderColor: Colors.cardBorder, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
-  imgWrap: { height: 170, position: "relative" },
+  imgWrap: { aspectRatio: 16 / 9, position: "relative" },
   imgGrad: { ...StyleSheet.absoluteFillObject, top: "40%" },
   liveBadge: { position: "absolute", top: 12, left: 12, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#FEF2F2", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: "#FECACA" },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.danger },

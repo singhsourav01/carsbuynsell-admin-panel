@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
   loadWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
   list: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 100, gap: 14 },
   card: { backgroundColor: Colors.card, borderRadius: 18, overflow: "hidden", borderWidth: 1, borderColor: Colors.cardBorder, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 8, elevation: 2 },
-  imgWrap: { height: 155, position: "relative" },
+  imgWrap: { aspectRatio: 16 / 9, position: "relative" },
   badge: { position: "absolute", top: 12, left: 12, flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: Colors.success, borderRadius: 7, paddingHorizontal: 9, paddingVertical: 4 },
   badgeText: { fontSize: 9, fontFamily: "Urbanist_700Bold", color: "#fff" },
   body: { padding: 14, gap: 6 },
