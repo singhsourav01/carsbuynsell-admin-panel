@@ -21,7 +21,8 @@ interface HistoryListing {
   lst_price: number;
   lst_type: "AUCTION" | "BUY_NOW";
   lst_status: string;
-  images?: { url?: string; file_url?: string }[];
+  images?: any[];
+  user_portfolio?: any[];
 }
 
 interface HistoryItem {
@@ -64,11 +65,23 @@ function getRelativeTime(dateStr: string): string {
 
 // ── Card component ───────────────────────────────────────────────────────────
 
+function getFirstListingImageUri(item: HistoryListing): string | undefined {
+  const firstImage = item?.images?.[0] || item?.user_portfolio?.[0];
+  if (!firstImage) return undefined;
+  if (typeof firstImage === "string") return firstImage;
+  return (
+    firstImage.url ||
+    firstImage.file_url ||
+    firstImage.file_signed_url ||
+    firstImage.signed_url ||
+    firstImage.image_url
+  );
+}
+
 const ActivityCard = memo(function ActivityCard({ item }: { item: HistoryItem }) {
   const cfg = STATUS_CONFIG[item.status] || DEFAULT_STATUS;
   const isBid = item.type === "BID";
-  const image = item.listing.images?.[0];
-  const imageUri = image?.url || image?.file_url;
+  const imageUri = getFirstListingImageUri(item.listing);
 
   return (
     <Pressable

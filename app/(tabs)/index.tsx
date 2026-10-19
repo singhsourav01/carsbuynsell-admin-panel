@@ -74,7 +74,7 @@ function FeaturedCard({ item, isActive }: { item: any; isActive: boolean }) {
       )}
       <View style={styles.featuredBottom}>
         <Text style={styles.featuredTitle} numberOfLines={1}>{item.lst_title}</Text>
-        <Text style={styles.featuredSeller} numberOfLines={1}>by {item.seller?.user_full_name || "Unknown"}</Text>
+        <Text style={styles.featuredSeller} numberOfLines={1}>by Admin</Text>
         <View style={styles.featuredPriceRow}>
           <Text style={styles.featuredPrice}>{formatCurrency(isAuction ? (item.lst_current_bid || item.lst_price) : item.lst_price)}</Text>
           {isAuction && item.lst_auction_end && <CountdownTimer endDate={item.lst_auction_end} compact />}

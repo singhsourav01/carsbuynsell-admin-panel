@@ -17,7 +17,7 @@ import { apiRequestDirect, getToken } from "@/lib/auth";
 import { fetchMySubscription, ActiveSubscription, CreateOrderResult, RazorpayPaymentResult, openNativeRazorpayCheckout } from "@/lib/subscription";
 
 const CATEGORIES = ["Sedan", "SUV", "Hatchback", "Luxury", "Sports", "Electric"];
-const SELL_VEHICLE_FEE = 800; // ₹800 listing fee
+const SELL_VEHICLE_FEE = 1000; // ₹1000 listing fee
 
 function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const [title, setTitle] = useState("");
@@ -34,7 +34,7 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
 
     setLoading(true);
     try {
-      // Step 1: Create Razorpay order for ₹800 listing fee
+      // Step 1: Create Razorpay order for ₹1000 listing fee
       const res = await apiRequestDirect("POST", "http://65.2.10.30:3002/user/subscriptions/create-order", {
         plan_id: "sub_002", // Sell vehicle plan ID
         amount: SELL_VEHICLE_FEE * 100, // Amount in paise
@@ -59,7 +59,7 @@ function SellSheet({ visible, onClose }: { visible: boolean; onClose: () => void
         "CarsbuyNsell User",
         "",
         "",
-        "Vehicle Listing Fee - ₹800",
+        "Vehicle Listing Fee - ₹1000",
       );
 
       // Step 3: Verify the payment on backend
@@ -515,7 +515,7 @@ export default function ProfileScreen() {
           <View style={styles.sellCtaIcon}><Ionicons name="car-sport" size={20} color={Colors.primary} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.sellCtaTitle}>Sell Your Vehicle</Text>
-            <Text style={styles.sellCtaSub}>₹800 listing fee</Text>
+            <Text style={styles.sellCtaSub}>₹1000 listing fee</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
         </Pressable>

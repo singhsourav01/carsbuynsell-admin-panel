@@ -50,7 +50,7 @@ const VCard = memo(function VCard({ item, onBuyNow }: { item: any; onBuyNow: () 
       </View>
       <View style={styles.body}>
         <Text style={styles.cardTitle} numberOfLines={1}>{item.lst_title}</Text>
-        <Text style={styles.cardMeta} numberOfLines={1}>{item.category?.cat_name || ""} · {item.seller?.user_full_name || ""}</Text>
+        <Text style={styles.cardMeta} numberOfLines={1}>{item.category?.cat_name || ""} · Admin</Text>
         <View style={styles.priceRow}>
           <Text style={styles.price}>{formatCurrency(item.lst_price)}</Text>
           <Pressable

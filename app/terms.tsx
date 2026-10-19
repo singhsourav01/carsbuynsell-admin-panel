@@ -13,8 +13,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { Colors } from "@/constants/colors";
 
-const PHONE = "+919607864200";
-const EMAIL = "legal@rajenterprises.com";
+const PHONE = "+917066412713";
+const EMAIL = "support@carsbuynsell.com";
 
 const sections = [
   {

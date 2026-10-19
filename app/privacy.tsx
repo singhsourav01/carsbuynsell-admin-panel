@@ -176,19 +176,19 @@ export default function PrivacyPolicyScreen() {
 
           <Pressable
             onPress={() =>
-              Linking.openURL("mailto:privacy@rajenterprises.com")
+              Linking.openURL("mailto:support@carsbuynsell.com")
             }
           >
             <Text style={styles.contactLink}>
-              privacy@rajenterprises.com
+              support@carsbuynsell.com
             </Text>
           </Pressable>
 
           <Pressable
-            onPress={() => Linking.openURL("tel:+919607864200")}
+            onPress={() => Linking.openURL("tel:+917066412713")}
           >
             <Text style={styles.contactLink}>
-              +91 96078 64200
+              +91 70664 12713
             </Text>
           </Pressable>
         </ScrollView>

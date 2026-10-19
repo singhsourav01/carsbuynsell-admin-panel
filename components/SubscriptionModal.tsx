@@ -46,7 +46,7 @@ export function SubscriptionModal({ visible, onClose, onSuccess, planType = "auc
       setActiveSub(sub);
 
       // Filter plans based on planType
-      // "sell" type filters for User Vehicle Subscription (sp_id: sub_002, price: 800)
+      // "sell" type filters for User Vehicle Subscription (sp_id: sub_002, price: 1000)
       // "auction" type filters for the full subscription (price: 10000)
       let filteredPlans = fetchedPlans;
       console.log("[SUB] All plans from API:", JSON.stringify(fetchedPlans));
@@ -56,13 +56,13 @@ export function SubscriptionModal({ visible, onClose, onSuccess, planType = "auc
         filteredPlans = fetchedPlans.filter(
           (p) => p.sp_id === "sub_002" ||
                  p.sp_name.toLowerCase().includes("user vehicle") ||
-                 Number(p.sp_price) === 800
+                 Number(p.sp_price) === 1000
         );
       } else if (planType === "auction") {
         filteredPlans = fetchedPlans.filter(
           (p) => p.sp_id !== "sub_002" &&
                  !p.sp_name.toLowerCase().includes("user vehicle") &&
-                 Number(p.sp_price) !== 800
+                 Number(p.sp_price) !== 1000
         );
       }
 

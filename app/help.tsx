@@ -15,8 +15,8 @@ import { Colors } from "@/constants/colors";
 export default function HelpSupportScreen() {
   const insets = useSafeAreaInsets();
 
-  const PHONE = "+919988776655";
-  const EMAIL = "support@rajmotors.com";
+  const PHONE = "+917066412713";
+  const EMAIL = "support@carsbuynsell.com";
 
   return (
     <View style={styles.overlay}>

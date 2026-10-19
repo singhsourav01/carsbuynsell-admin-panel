@@ -129,7 +129,7 @@ const AuctionCard = memo(function AuctionCard({ item, onBidNow }: { item: any; o
           {item.category?.cat_name && <View style={styles.catTag}><Text style={styles.catTagText}>{item.category.cat_name}</Text></View>}
         </View>
         <View style={styles.metaRow}>
-          {item.seller?.user_full_name && <View style={styles.metaItem}><Ionicons name="person-outline" size={12} color={Colors.textMuted} /><Text style={styles.metaText}>{item.seller.user_full_name}</Text></View>}
+          <View style={styles.metaItem}><Ionicons name="person-outline" size={12} color={Colors.textMuted} /><Text style={styles.metaText}>Admin</Text></View>
           {item.lst_bid_count > 0 && <View style={styles.metaItem}><Ionicons name="people-outline" size={12} color={Colors.textMuted} /><Text style={styles.metaText}>{item.lst_bid_count} bids</Text></View>}
         </View>
         <View style={styles.bottomRow}>

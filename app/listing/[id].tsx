@@ -244,7 +244,7 @@ export default function ListingDetailScreen() {
 
     const specs = [
         { icon: "pricetag-outline", label: "Category", val: listing.category?.cat_name || "—" },
-        { icon: "person-outline", label: "Seller", val: listing.seller?.user_full_name || "—" },
+        { icon: "person-outline", label: "Seller", val: "Admin" },
         { icon: "eye-outline", label: "Views", val: String(listing.lst_view_count || 0) },
         { icon: "people-outline", label: "Bids", val: String(listing.lst_bid_count || 0) },
         { icon: "calendar-outline", label: "Listed", val: listing.lst_created_at ? new Date(listing.lst_created_at).toLocaleDateString("en-IN") : "—" },
@@ -351,7 +351,7 @@ export default function ListingDetailScreen() {
                         </View>
                         <View style={s.sellerInfo}>
                             <Text style={s.sellerLabel}>Seller</Text>
-                            <Text style={s.sellerName}>{listing.seller?.user_full_name || "Unknown"}</Text>
+                            <Text style={s.sellerName}>Admin</Text>
                         </View>
                         <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
                     </View>
