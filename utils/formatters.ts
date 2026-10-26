@@ -36,6 +36,25 @@ export function formatCountdown(endDate: string): {
   };
 }
 
+const ENDED_STATUSES = ["ENDED", "CLOSED", "SOLD", "EXPIRED", "COMPLETED"];
+
+export function isAuctionEnded(listing: {
+  lst_auction_end?: string | null;
+  lst_status?: string | null;
+} | null | undefined): boolean {
+  if (!listing) return false;
+
+  const status = String(listing.lst_status || "").trim().toUpperCase();
+  if (ENDED_STATUSES.includes(status)) return true;
+
+  if (listing.lst_auction_end) {
+    const endTime = new Date(listing.lst_auction_end).getTime();
+    if (!isNaN(endTime) && endTime <= Date.now()) return true;
+  }
+
+  return false;
+}
+
 export function formatDate(date: string): string {
   return dayjs(date).format("DD MMM YYYY");
 }

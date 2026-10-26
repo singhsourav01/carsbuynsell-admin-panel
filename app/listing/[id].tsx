@@ -16,7 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
-import { formatCurrency } from "@/utils/formatters";
+import { formatCurrency, isAuctionEnded } from "@/utils/formatters";
 import { CountdownTimer } from "@/components/CountdownTimer";
 import { apiRequestDirect, getToken } from "@/lib/auth";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
@@ -136,6 +136,10 @@ export default function ListingDetailScreen() {
     }
 
     async function handleActionPress(action: "bid" | "buy") {
+        if (action === "bid" && isAuctionEnded(listing)) {
+            Alert.alert("Auction Ended", "This auction has ended. You can no longer place a bid.");
+            return;
+        }
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         setPendingAction(action);
 
@@ -163,6 +167,12 @@ export default function ListingDetailScreen() {
     }
 
     async function handlePlaceBid() {
+        if (isAuctionEnded(listing)) {
+            setBidModalVisible(false);
+            Alert.alert("Auction Ended", "This auction has ended. You can no longer place a bid.");
+            return;
+        }
+
         const token = await getToken();
         if (!token) {
             Alert.alert("Login Required", "Please log in to place a bid.");
@@ -209,6 +219,14 @@ export default function ListingDetailScreen() {
 
 
     const isAuction = listing?.lst_type === "AUCTION";
+
+    const [, setClockTick] = useState(0);
+    useEffect(() => {
+        if (!isAuction || !listing?.lst_auction_end) return;
+        const interval = setInterval(() => setClockTick((t) => t + 1), 1000);
+        return () => clearInterval(interval);
+    }, [isAuction, listing?.lst_auction_end]);
+
     const rawGallery = (listing?.images?.length ? listing.images : listing?.user_portfolio) || [];
     const galleryImages = rawGallery.map((img: any) => getImageUri(img)).filter(Boolean);
     const hasImages = galleryImages.length > 0;
@@ -241,6 +259,8 @@ export default function ListingDetailScreen() {
     const currentPrice = isAuction
         ? Number(listing.lst_current_bid || listing.lst_price || 0)
         : Number(listing.lst_price || 0);
+
+    const auctionEnded = isAuction && isAuctionEnded(listing);
 
     const specs = [
         { icon: "pricetag-outline", label: "Category", val: listing.category?.cat_name || "—" },
@@ -444,18 +464,19 @@ export default function ListingDetailScreen() {
                         <Text style={s.bottomPriceValue}>{formatCurrency(currentPrice)}</Text>
                     </View>
                     <Pressable
-                        style={({ pressed }) => [s.actionBtn, { opacity: pressed ? 0.85 : 1 }]}
+                        style={({ pressed }) => [s.actionBtn, { opacity: auctionEnded ? 0.6 : pressed ? 0.85 : 1 }]}
                         onPress={() => handleActionPress(isAuction ? "bid" : "buy")}
+                        disabled={auctionEnded}
                     >
                         <LinearGradient
-                            colors={isAuction ? ["#FF6B6B", Colors.danger] : [Colors.heroLight, Colors.hero]}
+                            colors={auctionEnded ? [Colors.textMuted, Colors.textMuted] : isAuction ? ["#FF6B6B", Colors.danger] : [Colors.heroLight, Colors.hero]}
                             style={s.actionBtnGrad}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 0 }}
                         >
-                            <Ionicons name={isAuction ? "flash" : "pricetag"} size={18} color="#fff" />
+                            <Ionicons name={auctionEnded ? "close-circle" : isAuction ? "flash" : "pricetag"} size={18} color="#fff" />
                             <Text style={s.actionBtnText}>
-                                {isAuction ? "Place Bid" : `Buy Now · ${formatCurrency(currentPrice)}`}
+                                {auctionEnded ? "Auction Ended" : isAuction ? "Place Bid" : `Buy Now · ${formatCurrency(currentPrice)}`}
                             </Text>
                         </LinearGradient>
                     </Pressable>
@@ -527,18 +548,23 @@ export default function ListingDetailScreen() {
                             </View>
 
                             <Pressable
-                                style={({ pressed }) => [s.submitBidBtn, { opacity: (pressed || isSubmittingBid) ? 0.85 : 1 }]}
+                                style={({ pressed }) => [s.submitBidBtn, { opacity: (pressed || isSubmittingBid || auctionEnded) ? 0.85 : 1 }]}
                                 onPress={handlePlaceBid}
-                                disabled={isSubmittingBid}
+                                disabled={isSubmittingBid || auctionEnded}
                             >
                                 <LinearGradient
-                                    colors={["#FF6B6B", Colors.danger]}
+                                    colors={auctionEnded ? [Colors.textMuted, Colors.textMuted] : ["#FF6B6B", Colors.danger]}
                                     style={s.submitBidGrad}
                                     start={{ x: 0, y: 0 }}
                                     end={{ x: 1, y: 0 }}
                                 >
                                     {isSubmittingBid ? (
                                         <ActivityIndicator color="#fff" size="small" />
+                                    ) : auctionEnded ? (
+                                        <>
+                                            <Ionicons name="close-circle" size={18} color="#fff" />
+                                            <Text style={s.submitBidText}>Auction Ended</Text>
+                                        </>
                                     ) : (
                                         <>
                                             <Ionicons name="flash" size={18} color="#fff" />

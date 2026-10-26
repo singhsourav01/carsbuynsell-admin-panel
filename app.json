@@ -2,7 +2,7 @@
   "expo": {
     "name": "CarsbuyNsell",
     "slug": "carsbuynsell",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/logo-icon.png",
     "scheme": "carsbuynsell",
@@ -19,6 +19,7 @@
     },
     "android": {
       "package": "com.carsbuynsell.app",
+      "versionCode": 3,
       "usesCleartextTraffic": true,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {

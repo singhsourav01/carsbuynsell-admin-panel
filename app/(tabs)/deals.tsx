@@ -65,7 +65,8 @@ function getRelativeTime(dateStr: string): string {
 
 // ── Card component ───────────────────────────────────────────────────────────
 
-function getFirstListingImageUri(item: HistoryListing): string | undefined {
+function getFirstListingImageUri(item: HistoryListing | undefined | null): string | undefined {
+  if (!item) return undefined;
   const firstImage = item?.images?.[0] || item?.user_portfolio?.[0];
   if (!firstImage) return undefined;
   if (typeof firstImage === "string") return firstImage;
@@ -78,10 +79,10 @@ function getFirstListingImageUri(item: HistoryListing): string | undefined {
   );
 }
 
-const ActivityCard = memo(function ActivityCard({ item }: { item: HistoryItem }) {
+const ActivityCard = memo(function ActivityCard({ item, fallbackImageUri }: { item: HistoryItem; fallbackImageUri?: string }) {
   const cfg = STATUS_CONFIG[item.status] || DEFAULT_STATUS;
   const isBid = item.type === "BID";
-  const imageUri = getFirstListingImageUri(item.listing);
+  const imageUri = getFirstListingImageUri(item.listing) || fallbackImageUri;
 
   return (
     <Pressable
@@ -142,6 +143,39 @@ export default function DealsScreen() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [imageMap, setImageMap] = useState<Record<string, string>>({});
+
+  const fetchMissingImages = useCallback(async (items: HistoryItem[]) => {
+    const missing = items.filter((i) => !getFirstListingImageUri(i.listing));
+    if (!missing.length) return;
+    try {
+      const results = await Promise.all(
+        missing.map(async (i) => {
+          try {
+            const res = await apiRequestDirect(
+              "GET",
+              `http://65.2.10.30:3002/user/listings/${i.listing.lst_id}`,
+            );
+            const text = await res.text();
+            let data: any = {};
+            try { data = JSON.parse(text); } catch { data = {}; }
+            return [i.listing.lst_id, getFirstListingImageUri(data?.data)] as const;
+          } catch {
+            return [i.listing.lst_id, undefined] as const;
+          }
+        }),
+      );
+      const updates: Record<string, string> = {};
+      for (const [id, uri] of results) {
+        if (uri) updates[id] = uri;
+      }
+      if (Object.keys(updates).length > 0) {
+        setImageMap((prev) => ({ ...prev, ...updates }));
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const fetchHistory = useCallback(async (silent = false) => {
     if (!silent) setIsLoading(true);
@@ -157,6 +191,7 @@ export default function DealsScreen() {
       try { data = JSON.parse(raw); } catch { data = {}; }
       if (res.ok && data?.data?.history) {
         setHistory(data.data.history);
+        fetchMissingImages(data.data.history);
       }
     } catch (err) {
       console.error("[DEALS] Fetch error:", err);
@@ -164,7 +199,7 @@ export default function DealsScreen() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [fetchMissingImages]);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
@@ -182,7 +217,12 @@ export default function DealsScreen() {
     .reduce((sum, o) => sum + o.amount, 0);
 
   const keyExtractor = useCallback((item: HistoryItem) => item.id, []);
-  const renderItem = useCallback(({ item }: { item: HistoryItem }) => <ActivityCard item={item} />, []);
+  const renderItem = useCallback(
+    ({ item }: { item: HistoryItem }) => (
+      <ActivityCard item={item} fallbackImageUri={imageMap[item.listing.lst_id]} />
+    ),
+    [imageMap],
+  );
 
   return (
     <View style={[s.container, { paddingTop: topPad }]}>

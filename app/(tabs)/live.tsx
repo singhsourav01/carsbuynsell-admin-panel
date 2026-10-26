@@ -13,7 +13,7 @@ import { Colors } from "@/constants/colors";
 import { CountdownTimer } from "@/components/CountdownTimer";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { ListingSearchFilters, type ListingCategory, type VehicleFilters } from "@/components/ListingSearchFilters";
-import { formatCurrency } from "@/utils/formatters";
+import { formatCurrency, isAuctionEnded } from "@/utils/formatters";
 import { apiRequestDirect } from "@/lib/auth";
 import { fetchMySubscription } from "@/lib/subscription";
 
@@ -41,13 +41,23 @@ function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: any | 
   const [bidAmount, setBidAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const lastBidTime = useRef(0);
+  const [, setClockTick] = useState(0);
+
+  useEffect(() => {
+    if (!auction?.lst_auction_end) return;
+    const interval = setInterval(() => setClockTick((t) => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, [auction?.lst_auction_end]);
+
   if (!auction) return null;
 
   const currentBid = Number(auction.lst_current_bid || auction.lst_price || 0);
   const minIncrement = Number(auction.lst_min_increment || 1);
   const minBid = currentBid + minIncrement;
+  const ended = isAuctionEnded(auction);
 
   const handleBid = async () => {
+    if (isAuctionEnded(auction)) { Alert.alert("Auction Ended", "This auction has ended. You can no longer place a bid."); return; }
     const now = Date.now();
     if (now - lastBidTime.current < 2000) { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); return; }
     const amount = parseInt(bidAmount.replace(/,/g, ""), 10);
@@ -86,20 +96,20 @@ function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: any | 
             </View>
           </View>
           <View style={bidS.minInfo}><Ionicons name="information-circle-outline" size={13} color={Colors.info} /><Text style={bidS.minText}>Min: {formatCurrency(minBid)}</Text></View>
-          <View style={bidS.quickRow}>
+          <View style={[bidS.quickRow, { opacity: ended ? 0.5 : 1 }]}>
             {[1, 2, 3].map(m => (
-              <Pressable key={m} onPress={() => { setBidAmount(String(currentBid + minIncrement * m)); Haptics.selectionAsync(); }} style={bidS.quickBtn}>
+              <Pressable key={m} onPress={() => { setBidAmount(String(currentBid + minIncrement * m)); Haptics.selectionAsync(); }} style={bidS.quickBtn} disabled={ended}>
                 <Text style={bidS.quickText}>+{formatCurrency(minIncrement * m)}</Text>
               </Pressable>
             ))}
           </View>
-          <View style={bidS.inputWrap}>
+          <View style={[bidS.inputWrap, { opacity: ended ? 0.5 : 1 }]}>
             <Text style={bidS.rupee}>₹</Text>
-            <TextInput style={bidS.input} value={bidAmount} onChangeText={setBidAmount} placeholder={String(minBid)} placeholderTextColor={Colors.textMuted} keyboardType="numeric" returnKeyType="done" />
+            <TextInput style={bidS.input} value={bidAmount} onChangeText={setBidAmount} placeholder={String(minBid)} placeholderTextColor={Colors.textMuted} keyboardType="numeric" returnKeyType="done" editable={!ended} />
           </View>
-          <Pressable style={({ pressed }) => [bidS.bidBtn, { opacity: pressed ? 0.85 : 1 }]} onPress={handleBid} disabled={loading}>
-            <LinearGradient colors={[Colors.heroLight, Colors.hero]} style={bidS.bidBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
-              {loading ? <ActivityIndicator color="#fff" /> : <><Ionicons name="flash" size={16} color="#fff" /><Text style={bidS.bidBtnText}>Place Bid</Text></>}
+          <Pressable style={({ pressed }) => [bidS.bidBtn, { opacity: ended ? 0.6 : pressed ? 0.85 : 1 }]} onPress={handleBid} disabled={loading || ended}>
+            <LinearGradient colors={ended ? [Colors.textMuted, Colors.textMuted] : [Colors.heroLight, Colors.hero]} style={bidS.bidBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+              {loading ? <ActivityIndicator color="#fff" /> : ended ? <><Ionicons name="close-circle" size={16} color="#fff" /><Text style={bidS.bidBtnText}>Auction Ended</Text></> : <><Ionicons name="flash" size={16} color="#fff" /><Text style={bidS.bidBtnText}>Place Bid</Text></>}
             </LinearGradient>
           </Pressable>
         </View>
@@ -109,8 +119,10 @@ function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: any | 
 }
 
 const AuctionCard = memo(function AuctionCard({ item, onBidNow }: { item: any; onBidNow: () => void }) {
+  const [expired, setExpired] = useState(false);
   const imageUri = getFirstListingImageUri(item);
   const currentBid = Number(item.lst_current_bid || item.lst_price || 0);
+  const ended = isAuctionEnded(item) || expired;
   return (
     <Pressable onPress={() => { router.push(`/listing/${item.lst_id}` as any); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }} style={({ pressed }) => [styles.card, { opacity: pressed ? 0.95 : 1 }]}>
       <View style={styles.imgWrap}>
@@ -121,7 +133,7 @@ const AuctionCard = memo(function AuctionCard({ item, onBidNow }: { item: any; o
         )}
         <LinearGradient colors={["transparent", "rgba(0,0,0,0.6)"]} style={styles.imgGrad} />
         <View style={styles.liveBadge}><View style={styles.liveDot} /><Text style={styles.liveBadgeText}>LIVE</Text></View>
-        {item.lst_auction_end && <View style={styles.timerWrap}><CountdownTimer endDate={item.lst_auction_end} compact /></View>}
+        {item.lst_auction_end && <View style={styles.timerWrap}><CountdownTimer endDate={item.lst_auction_end} compact onExpire={() => setExpired(true)} /></View>}
       </View>
       <View style={styles.cardBody}>
         <View style={styles.titleRow}>
@@ -134,7 +146,7 @@ const AuctionCard = memo(function AuctionCard({ item, onBidNow }: { item: any; o
         </View>
         <View style={styles.bottomRow}>
           <View><Text style={styles.bidLabel}>Current Bid</Text><Text style={styles.bidValue}>{formatCurrency(currentBid)}</Text></View>
-          <Pressable onPress={(e) => { e.stopPropagation?.(); onBidNow(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }} style={styles.bidNowBtn}><LinearGradient colors={[Colors.heroLight, Colors.hero]} style={styles.bidNowGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}><Ionicons name="flash" size={13} color="#fff" /><Text style={styles.bidNowText}>Bid Now</Text></LinearGradient></Pressable>
+          <Pressable onPress={(e) => { e.stopPropagation?.(); onBidNow(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }} style={[styles.bidNowBtn, ended && { opacity: 0.6 }]} disabled={ended}><LinearGradient colors={ended ? [Colors.textMuted, Colors.textMuted] : [Colors.heroLight, Colors.hero]} style={styles.bidNowGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}><Ionicons name={ended ? "close-circle" : "flash"} size={13} color="#fff" /><Text style={styles.bidNowText}>{ended ? "Ended" : "Bid Now"}</Text></LinearGradient></Pressable>
         </View>
       </View>
     </Pressable>
@@ -151,6 +163,10 @@ export default function LiveScreen() {
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
   const handleBidNowPress = useCallback(async (auction: any) => {
+    if (isAuctionEnded(auction)) {
+      Alert.alert("Auction Ended", "This auction has ended. You can no longer place a bid.");
+      return;
+    }
     console.log("handleBidNowPress", auction);
     setSelectedAuction(auction);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
