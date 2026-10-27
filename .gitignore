@@ -3,39 +3,39 @@
 # dependencies
 node_modules/
 
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
+# # Expo
+# .expo/
+# dist/
+# web-build/
+# expo-env.d.ts
 
-# Native
-ios/
-# android/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
+# # Native
+# ios/
+# # android/
+# *.orig.*
+# *.jks
+# *.p8
+# *.p12
+# *.key
+# *.mobileprovision
 
-# Metro
-.metro-health-check*
+# # Metro
+# .metro-health-check*
 
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
+# # debug
+# npm-debug.*
+# yarn-debug.*
+# yarn-error.*
 
-# macOS
-.DS_Store
-*.pem
+# # macOS
+# .DS_Store
+# *.pem
 
-# local env files
-.env*.local
+# # local env files
+# .env*.local
 
-# typescript
-*.tsbuildinfo
-.vercel
+# # typescript
+# *.tsbuildinfo
+# .vercel
 
-.env
+# .env
