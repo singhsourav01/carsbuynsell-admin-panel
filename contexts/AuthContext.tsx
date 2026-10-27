@@ -7,6 +7,10 @@ import React, {
   ReactNode,
 } from "react";
 import { getToken, getUser, deleteToken, storeToken, storeUser, storeRefreshToken, getRefreshToken, setOnLogoutCallback } from "@/lib/auth";
+import {
+  registerForPushNotifications,
+  setupPushNotificationListeners,
+} from "@/lib/push-notifications";
 import { router } from "expo-router";
 
 interface User {
@@ -64,6 +68,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       router.replace("/(auth)/login");
     });
   }, []);
+
+  // Keep the backend's FCM token up to date for the signed-in user, and
+  // listen for incoming/refreshed tokens while the app is running.
+  useEffect(() => {
+    if (isLoading || !token || !user) return;
+
+    const userRecord = user as unknown as Record<string, unknown>;
+    const userId = userRecord.id || userRecord.user_id || userRecord.uld_user_id;
+    if (!userId) return;
+
+    const params = {
+      userId: String(userId),
+      accessToken: token,
+      refreshToken: rToken,
+    };
+
+    registerForPushNotifications(params, { requestPermission: true }).catch(
+      (error) => console.log("[push] Registration failed:", error),
+    );
+
+    return setupPushNotificationListeners(params);
+  }, [isLoading, token, user, rToken]);
 
   const login = async (newToken: string, newUser: User, newRefreshToken?: string) => {
     const promises: Promise<void>[] = [storeToken(newToken), storeUser(newUser)];

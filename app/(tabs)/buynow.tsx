@@ -106,7 +106,7 @@ export default function BuyNowScreen() {
       try { data = JSON.parse(rawText); } catch { data = {}; }
       if (res.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert("Purchase Successful!", data?.message || "You have successfully purchased this vehicle.");
+        Alert.alert("Request Recorded", data?.message || "Contact details saved. Vehicle remains visible to users.");
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Alert.alert("Purchase Failed", data?.message || "Something went wrong. Please try again.");

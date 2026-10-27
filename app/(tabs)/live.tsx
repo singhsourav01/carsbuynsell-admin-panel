@@ -65,7 +65,7 @@ function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: any | 
     lastBidTime.current = now;
     setLoading(true);
     try {
-      const res = await apiRequestDirect("POST", `http://65.2.10.30:3002/user/listings/${auction.lst_id}/bid`, { bid_amount: amount }, true);
+      const res = await apiRequestDirect("POST", `http://65.2.10.30:3002/user/listings/${auction.lst_id}/bid`, { bid_amount: amount, auction_end: auction.lst_auction_end }, true);
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
@@ -118,11 +118,21 @@ function BidSheet({ auction, visible, onClose, onBidSuccess }: { auction: any | 
   );
 }
 
-const AuctionCard = memo(function AuctionCard({ item, onBidNow }: { item: any; onBidNow: () => void }) {
+const AuctionCard = memo(function AuctionCard({ item, onBidNow, onAuctionExpire }: { item: any; onBidNow: () => void; onAuctionExpire?: (listingId: string) => void }) {
   const [expired, setExpired] = useState(false);
+  const expiredRef = useRef(false);
   const imageUri = getFirstListingImageUri(item);
   const currentBid = Number(item.lst_current_bid || item.lst_price || 0);
   const ended = isAuctionEnded(item) || expired;
+
+  const handleExpire = useCallback(() => {
+    setExpired(true);
+    if (!expiredRef.current) {
+      expiredRef.current = true;
+      onAuctionExpire?.(item.lst_id);
+    }
+  }, [item.lst_id, onAuctionExpire]);
+
   return (
     <Pressable onPress={() => { router.push(`/listing/${item.lst_id}` as any); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }} style={({ pressed }) => [styles.card, { opacity: pressed ? 0.95 : 1 }]}>
       <View style={styles.imgWrap}>
@@ -133,7 +143,7 @@ const AuctionCard = memo(function AuctionCard({ item, onBidNow }: { item: any; o
         )}
         <LinearGradient colors={["transparent", "rgba(0,0,0,0.6)"]} style={styles.imgGrad} />
         <View style={styles.liveBadge}><View style={styles.liveDot} /><Text style={styles.liveBadgeText}>LIVE</Text></View>
-        {item.lst_auction_end && <View style={styles.timerWrap}><CountdownTimer endDate={item.lst_auction_end} compact onExpire={() => setExpired(true)} /></View>}
+        {item.lst_auction_end && <View style={styles.timerWrap}><CountdownTimer endDate={item.lst_auction_end} compact onExpire={handleExpire} /></View>}
       </View>
       <View style={styles.cardBody}>
         <View style={styles.titleRow}>
@@ -161,6 +171,19 @@ export default function LiveScreen() {
   const [localBids, setLocalBids] = useState<Record<string, number>>({});
   const [checkingSub, setCheckingSub] = useState(false);
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
+
+  const handleAuctionExpire = useCallback(async (listingId: string) => {
+    try {
+      await apiRequestDirect(
+        "POST",
+        `http://65.2.10.30:3002/user/listings/${listingId}/close-auction`,
+        { status: "EXPIRED" },
+        true,
+      );
+    } catch {
+      // Best-effort; backend auto-closes expired auctions as well.
+    }
+  }, []);
 
   const handleBidNowPress = useCallback(async (auction: any) => {
     if (isAuctionEnded(auction)) {
@@ -276,7 +299,7 @@ export default function LiveScreen() {
   }));
 
   const keyExtractor = useCallback((item: any) => item.lst_id, []);
-  const renderItem = useCallback(({ item }: { item: any }) => <AuctionCard item={item} onBidNow={() => handleBidNowPress(item)} />, [handleBidNowPress]);
+  const renderItem = useCallback(({ item }: { item: any }) => <AuctionCard item={item} onBidNow={() => handleBidNowPress(item)} onAuctionExpire={handleAuctionExpire} />, [handleBidNowPress, handleAuctionExpire]);
 
   return (
     <View style={[styles.container, { paddingTop: topPad }]}>

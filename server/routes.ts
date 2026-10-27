@@ -35,8 +35,24 @@ interface Engagement {
   eng_status: 'ACTIVE' | 'CLOSED';
   eng_created_at: string;
   eng_closed_at?: string;
+  eng_auction_end?: string;
 }
 const engagements: Engagement[] = [];
+
+// Mock auction end times by listing id (used to auto-free engagement slots)
+const auctionEndByListing: Record<string, string> = {};
+
+// Buy-now requests: store buyer contact details without hiding the vehicle
+interface BuyRequest {
+  br_id: string;
+  br_listing_id: string;
+  br_user_id: string;
+  br_contact_name: string;
+  br_contact_phone: string;
+  br_contact_email: string;
+  br_created_at: string;
+}
+const buyRequests: BuyRequest[] = [];
 
 interface User {
   id: string;
@@ -72,6 +88,24 @@ function generateToken(): string {
 
 function generateOtp(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function closeExpiredAuctions() {
+  const now = new Date();
+  for (const eng of engagements) {
+    if (eng.eng_status !== 'ACTIVE') continue;
+    const end = eng.eng_auction_end || auctionEndByListing[eng.eng_listing_id];
+    if (end && new Date(end) < now) {
+      eng.eng_status = 'CLOSED';
+      eng.eng_closed_at = now.toISOString();
+      if (eng.eng_type === 'AUCTION') {
+        const userSub = activeSubs[eng.eng_user_id];
+        if (userSub) {
+          userSub.sub_remaining_uses = Math.min(3, userSub.sub_remaining_uses + 1);
+        }
+      }
+    }
+  }
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -427,6 +461,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(401).json({ success: false, statusCode: 401, message: "Unauthorized" });
     }
 
+    closeExpiredAuctions();
+
     const sub = activeSubs[userId];
     if (!sub) {
       return res.status(404).json({ success: false, statusCode: 404, message: "No active subscription found" });
@@ -567,7 +603,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   /** POST /admin/listings/:id/close-auction — closes auction and restores votes */
   app.post("/admin/listings/:id/close-auction", (req: Request, res: Response) => {
-    const listingId = req.params.id;
+    const listingId = req.params.id as string;
     const { status } = req.body; // "SOLD" or "EXPIRED"
 
     // Find all active engagements for this listing
@@ -578,11 +614,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       eng.eng_status = 'CLOSED';
       eng.eng_closed_at = new Date().toISOString();
 
-      // Restore vote to subscription (only for AUCTION type, not BUY_NOW)
+      // Restore vote to the owning user's subscription (only for AUCTION type, not BUY_NOW)
       if (eng.eng_type === 'AUCTION') {
-        const userSub = Object.values(activeSubs).find(s => 
-          engagements.some(e => e.eng_user_id === eng.eng_user_id)
-        );
+        const userSub = activeSubs[eng.eng_user_id];
         if (userSub) {
           userSub.sub_remaining_uses = Math.min(3, userSub.sub_remaining_uses + 1);
           votesRestored++;
@@ -598,15 +632,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  /** POST /user/listings/:id/close-auction — closes auction and restores engagement slots */
+  app.post("/user/listings/:id/close-auction", (req: Request, res: Response) => {
+    const listingId = req.params.id as string;
+    const { status } = req.body || {};
+
+    const activeEngs = engagements.filter(e => e.eng_listing_id === listingId && e.eng_status === 'ACTIVE');
+    let votesRestored = 0;
+
+    for (const eng of activeEngs) {
+      eng.eng_status = 'CLOSED';
+      eng.eng_closed_at = new Date().toISOString();
+
+      if (eng.eng_type === 'AUCTION') {
+        const userSub = activeSubs[eng.eng_user_id];
+        if (userSub) {
+          userSub.sub_remaining_uses = Math.min(3, userSub.sub_remaining_uses + 1);
+          votesRestored++;
+        }
+      }
+    }
+
+    return res.json({
+      success: true,
+      statusCode: 200,
+      data: { listing_id: listingId, status: status || "EXPIRED", engagements_closed: activeEngs.length },
+      message: `Auction closed. ${votesRestored} vote(s) restored.`
+    });
+  });
+
   /** POST /user/listings/:id/bid — place bid (creates engagement on first bid) */
   app.post("/user/listings/:id/bid", (req: Request, res: Response) => {
     const token = req.headers.authorization?.replace("Bearer ", "");
     const userId = token ? sessions[token] : null;
-    const listingId = req.params.id;
+    const listingId = req.params.id as string;
+    const auctionEnd = req.body?.auction_end || req.body?.lst_auction_end || auctionEndByListing[listingId];
 
     if (!userId) {
       return res.status(401).json({ success: false, statusCode: 401, message: "Unauthorized" });
     }
+
+    closeExpiredAuctions();
 
     const sub = activeSubs[userId];
     if (!sub || sub.sub_remaining_uses <= 0) {
@@ -622,6 +688,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     if (!existingEng) {
       // First bid on this listing — create engagement and decrement vote
+      if (auctionEnd) {
+        auctionEndByListing[listingId] = auctionEnd;
+      }
       engagements.push({
         eng_id: generateToken(),
         eng_user_id: userId,
@@ -629,8 +698,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         eng_type: 'AUCTION',
         eng_status: 'ACTIVE',
         eng_created_at: new Date().toISOString(),
+        eng_auction_end: auctionEnd,
       });
       sub.sub_remaining_uses--;
+    } else if (auctionEnd) {
+      existingEng.eng_auction_end = auctionEnd;
+      auctionEndByListing[listingId] = auctionEnd;
     }
 
     return res.json({
@@ -639,6 +712,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
       data: { bid_id: generateToken(), listing_id: listingId, amount: req.body.amount },
       message: existingEng ? "Bid placed (same engagement)" : "Bid placed (1 vote used)"
     });
+  });
+
+  // ──────────────────────────────────────────────
+  // BUY NOW — save buyer contact details, keep vehicle visible
+  // ──────────────────────────────────────────────
+  app.post("/user/listings/:id/buy", (req: Request, res: Response) => {
+    const listingId = req.params.id as string;
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    const userId = token ? (sessions[token] || "guest") : "guest";
+    const user = userId !== "guest" ? users[userId] : null;
+
+    const contactName = req.body?.contact_name || user?.fullName || "Unknown Buyer";
+    const contactPhone = req.body?.contact_phone || user?.phone || "";
+    const contactEmail = req.body?.contact_email || user?.email || "";
+
+    const request: BuyRequest = {
+      br_id: generateToken(),
+      br_listing_id: listingId,
+      br_user_id: userId,
+      br_contact_name: contactName,
+      br_contact_phone: contactPhone,
+      br_contact_email: contactEmail,
+      br_created_at: new Date().toISOString(),
+    };
+    buyRequests.push(request);
+
+    // Vehicle remains visible to all users; only buyer contact details are stored.
+    return res.json({
+      success: true,
+      statusCode: 200,
+      data: { request_id: request.br_id, listing_id: listingId, message: "Contact details saved. Vehicle remains visible." },
+      message: "Purchase request recorded. Vehicle remains visible to users.",
+    });
+  });
+
+  // Legacy/compat endpoint
+  app.post("/api/user/buy-now/:id/purchase", (req: Request, res: Response) => {
+    const listingId = req.params.id as string;
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    const userId = token ? (sessions[token] || "guest") : "guest";
+    const user = userId !== "guest" ? users[userId] : null;
+
+    buyRequests.push({
+      br_id: generateToken(),
+      br_listing_id: listingId,
+      br_user_id: userId,
+      br_contact_name: user?.fullName || req.body?.contact_name || "Unknown Buyer",
+      br_contact_phone: user?.phone || req.body?.contact_phone || "",
+      br_contact_email: user?.email || req.body?.contact_email || "",
+      br_created_at: new Date().toISOString(),
+    });
+
+    return res.json({ success: true, data: { dealId: generateToken(), message: "Contact details saved. Vehicle remains visible." } });
   });
 
   // ──────────────────────────────────────────────
@@ -653,6 +779,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       data: { requestId: generateToken(), title, status: "PENDING_ADMIN_REVIEW", message: "Your vehicle has been submitted. Admin will review within 24 hours." },
     });
   });
+
+  // Periodically free engagement slots for auctions that have ended
+  setInterval(closeExpiredAuctions, 5000);
 
   const httpServer = createServer(app);
   return httpServer;

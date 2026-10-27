@@ -9,17 +9,19 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import * as Device from "expo-device";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiRequestDirect } from "@/lib/auth";
-import { getFCMToken } from "@/lib/getFCMToken";
+import {
+  getFCMToken,
+  registerForPushNotifications,
+  requestNotificationPermission,
+} from "@/lib/push-notifications";
 
 
 // Helper to deep-search for a key in nested object
@@ -47,28 +49,27 @@ export default function LoginScreen() {
 
   const registerDevice = async (data: any) => {
     try {
-      console.log("=== SIGNIN RESPONSE DATA ===", JSON.stringify(data, null, 2));
-
-      const userId = findValue(data, "id") || findValue(data, "user_id") || findValue(data, "userId");
+      const userId =
+        findValue(data, "id") ||
+        findValue(data, "user_id") ||
+        findValue(data, "userId") ||
+        findValue(data, "uld_user_id");
       const accessToken = findValue(data, "access_token") || findValue(data, "token");
       const refreshToken = findValue(data, "refresh_token") || findValue(data, "refreshToken");
 
-      const deviceName = Device.modelName || Device.deviceName || "Unknown Device";
-      const deviceType = Platform.OS === "ios" ? "IOS" : "ANDROID";
+      if (!userId) {
+        console.log("=== DEVICE REGISTRATION SKIPPED === Missing user id");
+        return;
+      }
 
-      const payload = {
-        uld_user_id: userId || "",
-        uld_fcm_token: "not-available",
-        uld_device_name: deviceName,
-        uld_device_type: deviceType,
-        uld_access_token: accessToken || "",
-        uld_refresh_token: refreshToken || "",
-      };
-      console.log("=== DEVICE REGISTRATION PAYLOAD ===", JSON.stringify(payload, null, 2));
-
-      const res = await apiRequestDirect("POST", "http://65.2.10.30:3002/user/user-device", payload);
-      const resText = await res.text();
-      console.log("=== DEVICE REGISTRATION RESPONSE ===", res.status, resText);
+      await registerForPushNotifications(
+        {
+          userId: String(userId),
+          accessToken: accessToken ? String(accessToken) : null,
+          refreshToken: refreshToken ? String(refreshToken) : null,
+        },
+        { requestPermission: false },
+      );
     } catch (err: any) {
       console.log("=== DEVICE REGISTRATION ERROR ===", err?.message || err);
     }
@@ -91,6 +92,7 @@ export default function LoginScreen() {
       // If it looks like an email, send as-is; otherwise just digits
       const isEmail = cleaned.includes("@");
       const userDetail = isEmail ? cleaned : `${cleaned.replace(/\D/g, "")}`;
+      await requestNotificationPermission();
       const fcm_token = await getFCMToken();
 
       const res = await apiRequestDirect("POST", "http://65.2.10.30:3001/auth/signin", {

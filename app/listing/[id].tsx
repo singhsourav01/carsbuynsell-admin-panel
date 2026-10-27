@@ -124,7 +124,7 @@ export default function ListingDetailScreen() {
             try { data = JSON.parse(rawText); } catch { data = {}; }
             if (res.ok) {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                Alert.alert("Purchase Successful!", data?.message || "You have successfully purchased this vehicle.");
+                Alert.alert("Request Recorded", data?.message || "Contact details saved. Vehicle remains visible to users.");
             } else {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                 Alert.alert("Purchase Failed", data?.message || "Something went wrong. Please try again.");
@@ -194,7 +194,7 @@ export default function ListingDetailScreen() {
             const res = await apiRequestDirect(
                 "POST",
                 `http://65.2.10.30:3002/user/listings/${id}/bid`,
-                { bid_amount: bidVal },
+                { bid_amount: bidVal, auction_end: listing?.lst_auction_end },
                 true,
             );
             const rawText = await res.text();
@@ -349,7 +349,10 @@ export default function ListingDetailScreen() {
                             {isAuction && listing.lst_auction_end && (
                                 <View style={s.timerWrap}>
                                     <Text style={s.timerLabel}>Ends In</Text>
-                                    <CountdownTimer endDate={listing.lst_auction_end} compact />
+                                    <CountdownTimer endDate={listing.lst_auction_end} compact onExpire={() => {
+                                        if (!id) return;
+                                        apiRequestDirect("POST", `http://65.2.10.30:3002/user/listings/${id}/close-auction`, { status: "EXPIRED" }, true).catch(() => {});
+                                    }} />
                                 </View>
                             )}
                         </View>
