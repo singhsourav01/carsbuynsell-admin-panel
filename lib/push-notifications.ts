@@ -7,6 +7,9 @@ import { Platform } from "react-native";
 import { apiRequestDirect } from "@/lib/auth";
 
 const ANDROID_CHANNEL_ID = "default";
+// Channel the notification service sends to (android.notification.channelId).
+// Android only shows high-importance pop-ups if this channel exists on the device.
+const SERVER_CHANNEL_ID = "carsbuynsell_notifications";
 const DEFAULT_NOTIFICATION_TITLE = "CarsbuyNsell";
 const FALLBACK_DEVICE_REGISTRATION_URL =
   "http://65.2.10.30:3002/user/user-device";
@@ -48,6 +51,12 @@ export async function ensureNotificationChannel(): Promise<void> {
 
   await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
     name: "Default",
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 250, 250, 250],
+    sound: "default",
+  });
+  await Notifications.setNotificationChannelAsync(SERVER_CHANNEL_ID, {
+    name: "Auctions & listings",
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 250, 250, 250],
     sound: "default",
