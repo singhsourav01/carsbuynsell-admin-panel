@@ -127,14 +127,8 @@ export default function BuyNowScreen() {
       const sub = await fetchMySubscription();
       console.log("[DEBUG-SUB] buynow.tsx Subscription:", sub);
 
-      const remainingUses =
-        sub?.sub_remaining_uses ??
-        sub?.remaining_uses ??
-        0;
-
-      console.log("[DEBUG-SUB] buynow.tsx remainingUses:", remainingUses);
-
-      if (sub && remainingUses > 0) {
+      // Buy Now only needs an active subscription — it does not use a slot
+      if (sub) {
         Alert.alert(
           "Confirm Purchase",
           `Are you sure you want to buy "${item.lst_title}" for ${formatCurrency(item.lst_price)}?`,

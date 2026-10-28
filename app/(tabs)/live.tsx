@@ -15,7 +15,7 @@ import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { ListingSearchFilters, type ListingCategory, type VehicleFilters } from "@/components/ListingSearchFilters";
 import { formatCurrency, isAuctionEnded } from "@/utils/formatters";
 import { apiRequestDirect } from "@/lib/auth";
-import { fetchMySubscription } from "@/lib/subscription";
+import { canBidOn, fetchMySubscription, SLOTS_FULL_MESSAGE } from "@/lib/subscription";
 
 const EMPTY_FILTERS: VehicleFilters = {
   fuelType: [],
@@ -172,17 +172,11 @@ export default function LiveScreen() {
   const [checkingSub, setCheckingSub] = useState(false);
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
-  const handleAuctionExpire = useCallback(async (listingId: string) => {
-    try {
-      await apiRequestDirect(
-        "POST",
-        `http://65.2.10.30:3002/user/listings/${listingId}/close-auction`,
-        { status: "EXPIRED" },
-        true,
-      );
-    } catch {
-      // Best-effort; backend auto-closes expired auctions as well.
-    }
+  // FIX #4: Client no longer calls close-auction. Slot restoration is handled
+  // exclusively server-side (closeExpiredAuctions runs every 5s on the backend).
+  // Allowing clients to trigger this was a security risk — any user could free slots early.
+  const handleAuctionExpire = useCallback((_listingId: string) => {
+    // Intentional no-op: server auto-closes expired auctions.
   }, []);
 
   const handleBidNowPress = useCallback(async (auction: any) => {
@@ -200,15 +194,15 @@ export default function LiveScreen() {
       const sub = await fetchMySubscription();
       console.log("[DEBUG-SUB] live.tsx Subscription:", sub);
 
-      const remainingUses =
-        sub?.sub_remaining_uses ??
-        sub?.remaining_uses ??
-        0;
-
-      console.log("[DEBUG-SUB] live.tsx remainingUses:", remainingUses);
-
-      if (sub && remainingUses > 0) {
+      if (sub && canBidOn(sub, auction.lst_id)) {
         setBidVisible(true);
+      } else if (sub) {
+        // Subscribed but all 3 slots are occupied — wait, don't repurchase
+        Alert.alert(
+          "Slots Full",
+          SLOTS_FULL_MESSAGE,
+          [{ text: "OK" }]
+        );
       } else {
         setSubVisible(true);
       }

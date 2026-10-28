@@ -85,12 +85,17 @@ export function SubscriptionModal({ visible, onClose, onSuccess, planType = "auc
 
   const hasActiveSub = subChecked && !!activeSub;
 
-  // Auto-continue: if the user already has an active subscription AND this is for auction (not sell),
-  // skip the modal entirely and fire onSuccess immediately.
+  // FIX #1: Auto-continue only when the subscription has available slots AND is not exhausted.
+  // Previously this fired even when remaining_uses === 0 (all slots occupied), causing the
+  // subscribe flow to run again on an already-subscribed user with no free slots.
   // For "sell" planType, we ALWAYS show the payment modal regardless of existing subscription.
-  if (visible && hasActiveSub && planType !== "sell") {
-    onSuccess()
-    return null
+  const hasAvailableSlots =
+    hasActiveSub &&
+    !activeSub?.slots_exhausted &&
+    (activeSub?.sub_remaining_uses ?? activeSub?.remaining_uses ?? 0) > 0;
+  if (visible && hasAvailableSlots && planType !== "sell") {
+    onSuccess();
+    return null;
   }
 
   // Use the first available plan, or a fallback if none loaded
@@ -254,7 +259,7 @@ export function SubscriptionModal({ visible, onClose, onSuccess, planType = "auc
                   </View>
                   <Text style={styles.planName}>{defaultPlan.sp_name}</Text>
                   <Text style={styles.planDesc}>
-                    {defaultPlan.sp_description || (planType === "sell" ? `List your vehicle for ${defaultPlan.sp_duration || 365} days` : `Bid or buy up to ${DISPLAY_USES} vehicles per day`)}
+                    {defaultPlan.sp_description || (planType === "sell" ? `List your vehicle for ${defaultPlan.sp_duration || 365} days` : `Bid in up to ${DISPLAY_USES} auctions at a time, unlimited Buy Now requests`)}
                   </Text>
                   <View style={styles.priceRow}>
                     <Text style={styles.priceCur}>₹</Text>
@@ -268,9 +273,9 @@ export function SubscriptionModal({ visible, onClose, onSuccess, planType = "auc
                     { icon: "shield-checkmark", text: "Secure Razorpay payment" },
                     { icon: "people", text: "Reach thousands of potential buyers" },
                   ] : [
-                    { icon: "flash", text: `${DISPLAY_USES} vehicle transactions per day (bid or buy)` },
+                    { icon: "flash", text: `Join up to ${DISPLAY_USES} auctions at a time` },
                     { icon: "shield-checkmark", text: "Secure Razorpay payment" },
-                    { icon: "time", text: "Daily limit resets every day" },
+                    { icon: "time", text: "Slots restore when your active auction ends" },
                     { icon: "car-sport", text: "Access all live auctions & buy now listings" },
                   ]).map(({ icon, text }) => (
                     <View key={text} style={styles.featureRow}>
@@ -287,7 +292,7 @@ export function SubscriptionModal({ visible, onClose, onSuccess, planType = "auc
                   <Text style={styles.infoText}>
                     {planType === "sell"
                       ? `Your vehicle will be visible to buyers for ${defaultPlan.sp_duration || 365} days. Admin will review and approve your listing within 24 hours.`
-                      : `Each successful bid or purchase deducts one daily transaction. Your ${DISPLAY_USES} daily transactions reset at the start of each day. If you need more than ${DISPLAY_USES} in a day, purchase again.`}
+                      : `Each auction you bid in occupies one slot, up to ${DISPLAY_USES} at a time. A slot is freed automatically when that auction ends. Buy Now requests don't use a slot.`}
                   </Text>
                 </View>
               </View>

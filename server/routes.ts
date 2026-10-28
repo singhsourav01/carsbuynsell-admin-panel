@@ -468,19 +468,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(404).json({ success: false, statusCode: 404, message: "No active subscription found" });
     }
 
-    // Engagement-based model: check if user has available slots (no daily reset)
-    if (sub.sub_remaining_uses <= 0) {
-      return res.status(404).json({ success: false, statusCode: 404, message: "All engagement slots are in use. Wait for an auction to close." });
-    }
-
-    // Include user's active engagements in response
+    // FIX #3: Always return 200 with sub data + slots_exhausted flag
+    // so the app shows 'wait for auction to end' instead of the subscribe screen.
     const userEngagements = engagements.filter(e => e.eng_user_id === userId && e.eng_status === 'ACTIVE');
-
-    return res.json({ 
-      success: true, 
-      statusCode: 200, 
-      data: { ...sub, engagements: userEngagements }, 
-      message: "Subscription fetched" 
+    return res.json({
+      success: true,
+      statusCode: 200,
+      data: {
+        ...sub,
+        engagements: userEngagements,
+        slots_exhausted: sub.sub_remaining_uses <= 0,
+      },
+      message: sub.sub_remaining_uses <= 0
+        ? 'All engagement slots are in use. Wait for an auction to close.'
+        : 'Subscription fetched',
     });
   });
 

@@ -20,7 +20,7 @@ import { formatCurrency, isAuctionEnded } from "@/utils/formatters";
 import { CountdownTimer } from "@/components/CountdownTimer";
 import { apiRequestDirect, getToken } from "@/lib/auth";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
-import { fetchMySubscription } from "@/lib/subscription";
+import { canBidOn, fetchMySubscription, SLOTS_FULL_MESSAGE } from "@/lib/subscription";
 
 const { width } = Dimensions.get("window");
 
@@ -143,11 +143,11 @@ export default function ListingDetailScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         setPendingAction(action);
 
-        // Check if user already has an active subscription
+        // Buy Now needs only an active subscription; bidding also needs a free slot
         try {
             const sub = await fetchMySubscription();
-            if (sub) {
-                // Has subscription — go directly to action
+
+            if (sub && (action === "buy" || canBidOn(sub, String(id)))) {
                 if (action === "buy") {
                     handleBuyNow();
                 } else if (action === "bid") {
@@ -157,8 +157,12 @@ export default function ListingDetailScreen() {
                     setBidModalVisible(true);
                 }
                 setPendingAction(null);
+            } else if (sub) {
+                // Subscribed but all 3 slots occupied — wait, don't repurchase
+                setPendingAction(null);
+                Alert.alert("Slots Full", SLOTS_FULL_MESSAGE, [{ text: "OK" }]);
             } else {
-                // No subscription — show modal
+                // No subscription — show subscribe modal
                 setSubVisible(true);
             }
         } catch {
@@ -349,10 +353,7 @@ export default function ListingDetailScreen() {
                             {isAuction && listing.lst_auction_end && (
                                 <View style={s.timerWrap}>
                                     <Text style={s.timerLabel}>Ends In</Text>
-                                    <CountdownTimer endDate={listing.lst_auction_end} compact onExpire={() => {
-                                        if (!id) return;
-                                        apiRequestDirect("POST", `http://65.2.10.30:3002/user/listings/${id}/close-auction`, { status: "EXPIRED" }, true).catch(() => {});
-                                    }} />
+                                    <CountdownTimer endDate={listing.lst_auction_end} compact />
                                 </View>
                             )}
                         </View>

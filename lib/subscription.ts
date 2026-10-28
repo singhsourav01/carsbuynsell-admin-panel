@@ -22,6 +22,8 @@ export interface ActiveSubscription {
     sub_status: string;
     sub_remaining_uses?: number;
     remaining_uses?: number;
+    /** FIX #3: True when the subscription is active but all 3 slots are occupied. */
+    slots_exhausted?: boolean;
     sub_expires_at: string;
     sub_starts_at: string;
     plan: SubscriptionPlan;
@@ -76,6 +78,22 @@ export async function fetchMySubscription(): Promise<ActiveSubscription | null> 
         return null;
     }
 }
+
+/**
+ * Bidding on a new auction needs a free slot (max 3 at a time). Bidding again
+ * on an auction the user already joined does not use another slot.
+ * Buy Now only needs an active subscription and never uses a slot.
+ */
+export function canBidOn(sub: ActiveSubscription, listingId: string): boolean {
+    const alreadyJoined = sub.engagements?.some(
+        (e) => e.eng_listing_id === listingId && e.eng_status === "ACTIVE",
+    );
+    const remainingUses = sub.sub_remaining_uses ?? sub.remaining_uses ?? 0;
+    return !!alreadyJoined || (!sub.slots_exhausted && remainingUses > 0);
+}
+
+export const SLOTS_FULL_MESSAGE =
+    "You are already in 3 active auctions. Wait for one of them to end before bidding on a new one.";
 
 /**
  * GET /user/subscriptions/plans
