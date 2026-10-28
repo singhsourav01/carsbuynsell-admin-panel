@@ -63,17 +63,32 @@ export async function ensureNotificationChannel(): Promise<void> {
   });
 }
 
-export async function requestNotificationPermission(): Promise<boolean> {
+// App start and login can both ask at once; share one request so the system
+// dialog is only shown once.
+let pendingPermissionRequest: Promise<boolean> | null = null;
+
+export function requestNotificationPermission(): Promise<boolean> {
+  if (!pendingPermissionRequest) {
+    pendingPermissionRequest = askNotificationPermission().finally(() => {
+      pendingPermissionRequest = null;
+    });
+  }
+  return pendingPermissionRequest;
+}
+
+async function askNotificationPermission(): Promise<boolean> {
   if (Platform.OS === "web" || !Device.isDevice) return false;
 
   await ensureNotificationChannel();
 
   const current = await Notifications.getPermissionsAsync();
-  if (current.status === "granted") return true;
-  if (current.status === "denied") return false;
+  if (current.granted) return true;
+  // Android can report "denied" before the user was ever asked; only give up
+  // when the system won't show the prompt again ("Don't allow" twice / blocked).
+  if (!current.canAskAgain) return false;
 
   const requested = await Notifications.requestPermissionsAsync();
-  return requested.status === "granted";
+  return requested.granted;
 }
 
 export async function getFCMToken(): Promise<string | null> {
@@ -127,10 +142,9 @@ export async function registerForPushNotifications(
 
   if (options.requestPermission) {
     const granted = await requestNotificationPermission();
-    if (!granted) {
-      console.log("[push] Notification permission not granted");
-      return null;
-    }
+    // Register the token anyway: if the user enables notifications later in
+    // Settings, pushes start arriving without needing to log in again.
+    if (!granted) console.log("[push] Notification permission not granted");
   }
 
   const token = await getFCMToken();

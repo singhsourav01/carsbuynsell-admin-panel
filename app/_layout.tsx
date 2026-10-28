@@ -14,6 +14,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { requestNotificationPermission } from "@/lib/push-notifications";
 import { Colors } from "@/constants/colors";
 
 SplashScreen.preventAutoHideAsync();
@@ -40,6 +41,15 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (fontsLoaded) SplashScreen.hideAsync();
+  }, [fontsLoaded]);
+
+  // Ask for notification permission on first launch (Android 13+ never asks at
+  // install). Once the splash is gone so the system dialog is visible.
+  useEffect(() => {
+    if (!fontsLoaded) return;
+    requestNotificationPermission().catch((error) =>
+      console.log("[push] Permission request failed:", error),
+    );
   }, [fontsLoaded]);
 
   if (!fontsLoaded) return null;
