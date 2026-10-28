@@ -7,14 +7,14 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { apiRequestDirect, getToken } from "@/lib/auth";
-import { fetchMySubscription, ActiveSubscription, CreateOrderResult, RazorpayPaymentResult, openNativeRazorpayCheckout } from "@/lib/subscription";
+import { fetchMySubscription, getSlots, ActiveSubscription, CreateOrderResult, RazorpayPaymentResult, openNativeRazorpayCheckout } from "@/lib/subscription";
 
 const CATEGORIES = ["Sedan", "SUV", "Hatchback", "Luxury", "Sports", "Electric"];
 const SELL_VEHICLE_FEE = 1000; // ₹1000 listing fee
@@ -265,7 +265,10 @@ export default function ProfileScreen() {
     }
   }, []);
 
-  useEffect(() => { loadSubscription(); }, [loadSubscription]);
+  // Refetch whenever the tab is focused — tabs stay mounted, so a subscription
+  // bought from Live / Buy Now (or a slot freed by an auction ending) would
+  // otherwise not show until the app restarts.
+  useFocusEffect(useCallback(() => { loadSubscription(); }, [loadSubscription]));
   console.log(profile, " here is prfoile")
   const openEditProfile = () => {
     setEditName(profile?.user_full_name || profile?.full_name || user?.fullName || "");
@@ -485,11 +488,13 @@ export default function ProfileScreen() {
                   <Text style={styles.subPlan}>{subscription.plan?.sp_name ?? "STANDARD"}</Text>
                 </View>
                 <Text style={styles.subTitle}>Subscription</Text>
-                <Text style={styles.subExpiry}>3 active engagements at a time</Text>
+                <Text style={styles.subExpiry}>
+                  Bidding in {getSlots(subscription).used} of {getSlots(subscription).total} auctions
+                </Text>
               </View>
               <View style={styles.subCountWrap}>
-                <Text style={styles.subCount}>{subscription.sub_remaining_uses ?? subscription.remaining_uses ?? 0}</Text>
-                <Text style={styles.subCountLabel}>slots{"\n"}left</Text>
+                <Text style={styles.subCount}>{getSlots(subscription).available}/{getSlots(subscription).total}</Text>
+                <Text style={styles.subCountLabel}>slots{"\n"}free</Text>
               </View>
             </View>
           </Pressable>

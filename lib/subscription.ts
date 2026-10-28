@@ -22,18 +22,33 @@ export interface ActiveSubscription {
     sub_status: string;
     sub_remaining_uses?: number;
     remaining_uses?: number;
-    /** FIX #3: True when the subscription is active but all 3 slots are occupied. */
+    /** True when the subscription is active but all 3 slots are occupied. */
     slots_exhausted?: boolean;
+    /** Slot counts computed by the backend from the auctions the user is in. */
+    slots_total?: number;
+    slots_used?: number;
+    slots_available?: number;
     sub_expires_at: string;
     sub_starts_at: string;
     plan: SubscriptionPlan;
-    // Engagements track active bids/orders per vehicle
+    // Auctions currently occupying a slot
     engagements?: Array<{
         eng_id: string;
         eng_listing_id: string;
         eng_type: 'AUCTION' | 'BUY_NOW';
         eng_status: 'ACTIVE' | 'CLOSED';
+        listing?: { lst_title: string; lst_auction_end: string | null };
     }>;
+}
+
+export const SLOT_LIMIT = 3;
+
+/** Free / used / total auction slots for a subscription. */
+export function getSlots(sub: ActiveSubscription) {
+    const total = sub.slots_total ?? SLOT_LIMIT;
+    const available = Math.max(0, sub.slots_available ?? sub.sub_remaining_uses ?? sub.remaining_uses ?? 0);
+    const used = sub.slots_used ?? Math.max(0, total - available);
+    return { total, used, available };
 }
 
 export interface CreateOrderResult {
@@ -88,8 +103,7 @@ export function canBidOn(sub: ActiveSubscription, listingId: string): boolean {
     const alreadyJoined = sub.engagements?.some(
         (e) => e.eng_listing_id === listingId && e.eng_status === "ACTIVE",
     );
-    const remainingUses = sub.sub_remaining_uses ?? sub.remaining_uses ?? 0;
-    return !!alreadyJoined || (!sub.slots_exhausted && remainingUses > 0);
+    return !!alreadyJoined || getSlots(sub).available > 0;
 }
 
 export const SLOTS_FULL_MESSAGE =

@@ -3,7 +3,7 @@ import {
   View, Text, FlatList, Pressable, StyleSheet, Modal,
   TextInput, ActivityIndicator, Alert, RefreshControl,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,7 +15,7 @@ import { SubscriptionModal } from "@/components/SubscriptionModal";
 import { ListingSearchFilters, type ListingCategory, type VehicleFilters } from "@/components/ListingSearchFilters";
 import { formatCurrency, isAuctionEnded } from "@/utils/formatters";
 import { apiRequestDirect } from "@/lib/auth";
-import { canBidOn, fetchMySubscription, SLOTS_FULL_MESSAGE } from "@/lib/subscription";
+import { canBidOn, fetchMySubscription, getSlots, SLOTS_FULL_MESSAGE, type ActiveSubscription } from "@/lib/subscription";
 
 const EMPTY_FILTERS: VehicleFilters = {
   fuelType: [],
@@ -170,10 +170,29 @@ export default function LiveScreen() {
   const [subVisible, setSubVisible] = useState(false);
   const [localBids, setLocalBids] = useState<Record<string, number>>({});
   const [checkingSub, setCheckingSub] = useState(false);
+  const [mySub, setMySub] = useState<ActiveSubscription | null>(null);
   const topPad = insets.top + (insets.top < 20 ? 67 : 0);
 
+  // Keep the slot counter in the header current: on focus, after a bid, after subscribing
+  const loadMySub = useCallback(async () => {
+    setMySub(await fetchMySubscription());
+  }, []);
+  useFocusEffect(useCallback(() => { loadMySub(); }, [loadMySub]));
+
+  const showSlotDetails = useCallback(() => {
+    if (!mySub) { setSubVisible(true); return; }
+    const { used, total, available } = getSlots(mySub);
+    const titles = (mySub.engagements ?? []).map(e => `• ${e.listing?.lst_title ?? "Auction"}`).join("\n");
+    Alert.alert(
+      `${available} of ${total} slots free`,
+      `You can bid in up to ${total} auctions at a time. You are in ${used}.` +
+        (titles ? `\n\n${titles}` : "") +
+        "\n\nA slot frees up automatically when that auction ends.",
+    );
+  }, [mySub]);
+
   // FIX #4: Client no longer calls close-auction. Slot restoration is handled
-  // exclusively server-side (closeExpiredAuctions runs every 5s on the backend).
+  // exclusively server-side (closeExpiredAuctions runs every 60s on the backend).
   // Allowing clients to trigger this was a security risk — any user could free slots early.
   const handleAuctionExpire = useCallback((_listingId: string) => {
     // Intentional no-op: server auto-closes expired auctions.
@@ -192,7 +211,7 @@ export default function LiveScreen() {
     setCheckingSub(true);
     try {
       const sub = await fetchMySubscription();
-      console.log("[DEBUG-SUB] live.tsx Subscription:", sub);
+      setMySub(sub);
 
       if (sub && canBidOn(sub, auction.lst_id)) {
         setBidVisible(true);
@@ -249,6 +268,7 @@ export default function LiveScreen() {
   const fetchAuctions = useCallback(async (isRefresh = false) => {
     if (isRefresh) setIsRefreshing(true);
 
+    // Backend returns live auctions first, then ended ones (shown with a disabled "Ended" button)
     const params = new URLSearchParams({ type: "AUCTION" });
 
     if (debouncedSearch) params.set("search", debouncedSearch);
@@ -291,6 +311,7 @@ export default function LiveScreen() {
     ...a,
     lst_current_bid: localBids[a.lst_id] ?? a.lst_current_bid,
   }));
+  const liveCount = displayAuctions.filter(a => !isAuctionEnded(a)).length;
 
   const keyExtractor = useCallback((item: any) => item.lst_id, []);
   const renderItem = useCallback(({ item }: { item: any }) => <AuctionCard item={item} onBidNow={() => handleBidNowPress(item)} onAuctionExpire={handleAuctionExpire} />, [handleBidNowPress, handleAuctionExpire]);
@@ -300,9 +321,17 @@ export default function LiveScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.pageTitle}>Live Auctions</Text>
-          <Text style={styles.pageSub}>{displayAuctions.length} auction{displayAuctions.length !== 1 ? "s" : ""} live now</Text>
+          <Text style={styles.pageSub}>{liveCount} auction{liveCount !== 1 ? "s" : ""} live now</Text>
         </View>
-        <View style={styles.liveIndicator}><View style={styles.livePulse} /><Text style={styles.liveText}>LIVE</Text></View>
+        <View style={styles.headerRight}>
+          <Pressable onPress={showSlotDetails} style={[styles.slotChip, mySub && getSlots(mySub).available === 0 && styles.slotChipFull]}>
+            <Ionicons name="layers-outline" size={13} color={mySub && getSlots(mySub).available === 0 ? Colors.danger : Colors.primary} />
+            <Text style={[styles.slotChipText, mySub && getSlots(mySub).available === 0 && { color: Colors.danger }]}>
+              {mySub ? `${getSlots(mySub).available}/${getSlots(mySub).total} slots free` : "Subscribe"}
+            </Text>
+          </Pressable>
+          <View style={styles.liveIndicator}><View style={styles.livePulse} /><Text style={styles.liveText}>LIVE</Text></View>
+        </View>
       </View>
 
       <ListingSearchFilters
@@ -325,11 +354,11 @@ export default function LiveScreen() {
           ListEmptyComponent={<View style={styles.empty}><Ionicons name="flash-outline" size={48} color={Colors.textMuted} /><Text style={styles.emptyTitle}>No Live Auctions</Text><Text style={styles.emptySub}>Check back soon</Text></View>}
         />
       )}
-      <BidSheet auction={selectedAuction} visible={bidVisible} onClose={() => setBidVisible(false)} onBidSuccess={(bid) => { if (selectedAuction) setLocalBids(p => ({ ...p, [selectedAuction.lst_id]: bid })); }} />
+      <BidSheet auction={selectedAuction} visible={bidVisible} onClose={() => setBidVisible(false)} onBidSuccess={(bid) => { if (selectedAuction) setLocalBids(p => ({ ...p, [selectedAuction.lst_id]: bid })); loadMySub(); }} />
       <SubscriptionModal
         visible={subVisible}
         onClose={() => setSubVisible(false)}
-        onSuccess={() => { setSubVisible(false); if (selectedAuction) setBidVisible(true); }}
+        onSuccess={() => { setSubVisible(false); loadMySub(); if (selectedAuction) setBidVisible(true); }}
       />
     </View>
   );
@@ -340,6 +369,10 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingBottom: 16 },
   pageTitle: { fontSize: 24, fontFamily: "Urbanist_700Bold", color: Colors.text },
   pageSub: { fontSize: 13, fontFamily: "Urbanist_400Regular", color: Colors.textSecondary, marginTop: 2 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  slotChip: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: Colors.card, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: Colors.cardBorder },
+  slotChipFull: { backgroundColor: "#FEF2F2", borderColor: "#FECACA" },
+  slotChipText: { fontSize: 11, fontFamily: "Urbanist_700Bold", color: Colors.primary },
   liveIndicator: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#FEF2F2", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: "#FECACA" },
   livePulse: { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.danger },
   liveText: { fontSize: 11, fontFamily: "Urbanist_700Bold", color: Colors.danger, letterSpacing: 0.5 },

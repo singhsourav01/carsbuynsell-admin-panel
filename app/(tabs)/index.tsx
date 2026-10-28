@@ -18,7 +18,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/contexts/AuthContext";
-import { formatCurrency } from "@/utils/formatters";
+import { formatCurrency, isAuctionEnded } from "@/utils/formatters";
 import { sortCategoriesByPreferredSequence } from "@/utils/category-order";
 import { CountdownTimer } from "@/components/CountdownTimer";
 import { ListingSearchFilters, type VehicleFilters } from "@/components/ListingSearchFilters";
@@ -63,7 +63,7 @@ function FeaturedCard({ item, isActive }: { item: any; isActive: boolean }) {
       <LinearGradient colors={["transparent", "rgba(0,0,0,0.75)"]} style={styles.featuredGradient} />
       <View style={styles.featuredTypeBadge}>
         <Text style={[styles.featuredTypeBadgeText, { color: isAuction ? "#FFD700" : Colors.success }]}>
-          {isAuction ? "LIVE AUCTION" : "BUY NOW"}
+          {isAuction ? (isAuctionEnded(item) ? "AUCTION ENDED" : "LIVE AUCTION") : "BUY NOW"}
         </Text>
       </View>
       {/* Category badge */}
@@ -102,8 +102,8 @@ function RecentCard({ item }: { item: any }) {
         ) : (
           <LinearGradient colors={[Colors.hero, Colors.heroDark]} style={StyleSheet.absoluteFill} />
         )}
-        <View style={[styles.recentBadge, { backgroundColor: isAuction ? "#FF6B6B" : Colors.success }]}>
-          <Text style={styles.recentBadgeText}>{isAuction ? "LIVE" : "BUY NOW"}</Text>
+        <View style={[styles.recentBadge, { backgroundColor: isAuction ? (isAuctionEnded(item) ? Colors.textMuted : "#FF6B6B") : Colors.success }]}>
+          <Text style={styles.recentBadgeText}>{isAuction ? (isAuctionEnded(item) ? "ENDED" : "LIVE") : "BUY NOW"}</Text>
         </View>
       </View>
       <View style={styles.recentInfo}>
