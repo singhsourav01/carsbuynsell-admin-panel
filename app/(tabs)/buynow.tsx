@@ -85,6 +85,10 @@ export default function BuyNowScreen() {
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [buyingItem, setBuyingItem] = useState<string | null>(null);
   const [confirmVisible, setConfirmVisible] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -166,9 +170,7 @@ export default function BuyNowScreen() {
     }
   }, []);
 
-  const fetchListings = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setIsRefreshing(true);
-
+  const buildListingsUrl = useCallback((pageNum: number) => {
     const params = new URLSearchParams({ type: "BUY_NOW" });
 
     if (debouncedSearch) params.set("search", debouncedSearch);
@@ -177,23 +179,64 @@ export default function BuyNowScreen() {
     if (appliedFilters.transmission.length > 0) params.set("transmission", appliedFilters.transmission.join(","));
     if (appliedFilters.bodyType.length > 0) params.set("body_type", appliedFilters.bodyType.join(","));
     if (appliedFilters.ownership.length > 0) params.set("ownership", appliedFilters.ownership.join(","));
+    params.set("page", String(pageNum));
+
+    return `http://65.2.10.30:3002/user/listings?${params.toString()}`;
+  }, [appliedFilters, debouncedSearch, selectedCategory]);
+
+  // Only Buy Now vehicles belong in this section
+  const onlyBuyNow = (items: any[]) => items.filter((i) => !i?.lst_type || i.lst_type === "BUY_NOW");
+
+  const parseListings = (data: any) => {
+    // Response could be data.data.data or data.data (array) or data.data.listings
+    const items = data?.data?.data || data?.data?.listings || (Array.isArray(data?.data) ? data.data : []);
+    return onlyBuyNow(items);
+  };
+
+  const fetchListings = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setIsRefreshing(true);
 
     try {
-      const res = await apiRequestDirect("GET", `http://65.2.10.30:3002/user/listings?${params.toString()}`);
+      const res = await apiRequestDirect("GET", buildListingsUrl(1));
       const rawText = await res.text();
       let data: any = {};
       try { data = JSON.parse(rawText); } catch { data = {}; }
       if (res.ok) {
-        // Response could be data.data.data or data.data (array) or data.data.listings
-        const items = data?.data?.data || data?.data?.listings || (Array.isArray(data?.data) ? data.data : []);
-        setListings(items);
+        setListings(parseListings(data));
+        setPage(1);
+        setHasNextPage(data?.data?.pagination?.hasNextPage ?? false);
+        setTotalCount(data?.data?.pagination?.total ?? null);
       }
     } catch { /* ignore */ }
     finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [appliedFilters, debouncedSearch, selectedCategory]);
+  }, [buildListingsUrl]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasNextPage) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const res = await apiRequestDirect("GET", buildListingsUrl(nextPage));
+      const rawText = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(rawText); } catch { data = {}; }
+      if (res.ok) {
+        const more = parseListings(data);
+        setListings((prev) => {
+          const seen = new Set(prev.map((i) => i.lst_id));
+          return [...prev, ...more.filter((i) => !seen.has(i.lst_id))];
+        });
+        setPage(nextPage);
+        setHasNextPage(data?.data?.pagination?.hasNextPage ?? false);
+      } else {
+        setHasNextPage(false);
+      }
+    } catch { /* ignore */ }
+    finally { setLoadingMore(false); }
+  }, [loadingMore, hasNextPage, page, buildListingsUrl]);
 
   useEffect(() => { fetchListings(); }, [fetchListings]);
 
@@ -210,7 +253,7 @@ export default function BuyNowScreen() {
     <View style={[styles.container, { paddingTop: topPad }]}>
       <View style={styles.header}>
         <Text style={styles.pageTitle}>Buy Now</Text>
-        <Text style={styles.pageSub}>{listings.length} vehicle{listings.length !== 1 ? "s" : ""} available</Text>
+        <Text style={styles.pageSub}>{totalCount ?? listings.length} vehicle{(totalCount ?? listings.length) !== 1 ? "s" : ""} available</Text>
       </View>
 
       <ListingSearchFilters
@@ -230,6 +273,8 @@ export default function BuyNowScreen() {
       {isLoading ? <View style={styles.loadWrap}><ActivityIndicator size="large" color={Colors.primary} /></View> : (
         <FlatList data={listings} renderItem={renderItem} keyExtractor={keyExtractor}
           contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}
+          onEndReached={loadMore} onEndReachedThreshold={0.4}
+          ListFooterComponent={loadingMore ? <ActivityIndicator style={{ marginVertical: 16 }} color={Colors.primary} /> : null}
           refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={Colors.primary} />}
           ListEmptyComponent={<View style={styles.empty}><Ionicons name="car-outline" size={48} color={Colors.textMuted} /><Text style={styles.emptyTitle}>No Vehicles</Text><Text style={styles.emptySub}>Try changing your search or filters</Text></View>}
         />
