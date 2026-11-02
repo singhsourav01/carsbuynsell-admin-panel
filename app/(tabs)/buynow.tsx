@@ -13,6 +13,7 @@ import { Colors } from "@/constants/colors";
 import { formatCurrency } from "@/utils/formatters";
 import { apiRequestDirect } from "@/lib/auth";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
+import { BuyConfirmModal } from "@/components/BuyConfirmModal";
 import { fetchMySubscription } from "@/lib/subscription";
 import { ListingSearchFilters, type ListingCategory, type VehicleFilters } from "@/components/ListingSearchFilters";
 
@@ -83,6 +84,7 @@ export default function BuyNowScreen() {
   const [subVisible, setSubVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [buyingItem, setBuyingItem] = useState<string | null>(null);
+  const [confirmVisible, setConfirmVisible] = useState(false);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -98,7 +100,10 @@ export default function BuyNowScreen() {
       const res = await apiRequestDirect(
         "POST",
         `http://65.2.10.30:3002/user/listings/${item.lst_id}/buy`,
-        {},
+        {
+          listing_title: item.lst_title,
+          listing_price: Number(item.lst_price) || 0,
+        },
         true,
       );
       const rawText = await res.text();
@@ -106,7 +111,7 @@ export default function BuyNowScreen() {
       try { data = JSON.parse(rawText); } catch { data = {}; }
       if (res.ok) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert("Request Recorded", data?.message || "Contact details saved. Vehicle remains visible to users.");
+        Alert.alert("Purchase Successful!", data?.message || "You have successfully purchased this vehicle.");
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         Alert.alert("Purchase Failed", data?.message || "Something went wrong. Please try again.");
@@ -127,16 +132,15 @@ export default function BuyNowScreen() {
       const sub = await fetchMySubscription();
       console.log("[DEBUG-SUB] buynow.tsx Subscription:", sub);
 
-      // Buy Now only needs an active subscription — it does not use a slot
-      if (sub) {
-        Alert.alert(
-          "Confirm Purchase",
-          `Are you sure you want to buy "${item.lst_title}" for ${formatCurrency(item.lst_price)}?`,
-          [
-            { text: "Cancel", style: "cancel" },
-            { text: "Buy Now", onPress: () => executeBuyNow(item) },
-          ]
-        );
+      const remainingUses =
+        sub?.sub_remaining_uses ??
+        sub?.remaining_uses ??
+        0;
+
+      console.log("[DEBUG-SUB] buynow.tsx remainingUses:", remainingUses);
+
+      if (sub && remainingUses > 0) {
+        setConfirmVisible(true);
       } else {
         setSubVisible(true);
       }
@@ -146,7 +150,7 @@ export default function BuyNowScreen() {
       setSubVisible(true);
     }
 
-  }, [executeBuyNow]);
+  }, []);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -235,17 +239,19 @@ export default function BuyNowScreen() {
         onClose={() => setSubVisible(false)}
         onSuccess={() => {
           setSubVisible(false);
-          if (selectedItem) {
-            // After subscribing, confirm and buy
-            Alert.alert(
-              "Confirm Purchase",
-              `Are you sure you want to buy "${selectedItem.lst_title}" for ${formatCurrency(selectedItem.lst_price)}?`,
-              [
-                { text: "Cancel", style: "cancel" },
-                { text: "Buy Now", style: "default", onPress: () => executeBuyNow(selectedItem) },
-              ]
-            );
-          }
+          if (selectedItem) setConfirmVisible(true);
+        }}
+      />
+      <BuyConfirmModal
+        visible={confirmVisible}
+        title={selectedItem?.lst_title}
+        priceLabel={selectedItem ? formatCurrency(selectedItem.lst_price) : undefined}
+        loading={!!buyingItem}
+        onCancel={() => setConfirmVisible(false)}
+        onBuy={async () => {
+          if (!selectedItem) return;
+          await executeBuyNow(selectedItem);
+          setConfirmVisible(false);
         }}
       />
     </View>

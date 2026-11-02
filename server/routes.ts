@@ -50,6 +50,8 @@ interface BuyRequest {
   br_contact_name: string;
   br_contact_phone: string;
   br_contact_email: string;
+  br_listing_title: string;
+  br_listing_price: number;
   br_created_at: string;
 }
 const buyRequests: BuyRequest[] = [];
@@ -735,6 +737,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       br_contact_name: contactName,
       br_contact_phone: contactPhone,
       br_contact_email: contactEmail,
+      br_listing_title: req.body?.listing_title || "",
+      br_listing_price: Number(req.body?.listing_price) || 0,
       br_created_at: new Date().toISOString(),
     };
     buyRequests.push(request);
@@ -746,6 +750,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       data: { request_id: request.br_id, listing_id: listingId, message: "Contact details saved. Vehicle remains visible." },
       message: "Purchase request recorded. Vehicle remains visible to users.",
     });
+  });
+
+  /** GET /admin/buy-requests — all Buy Now purchases with buyer details (newest first) */
+  app.get("/admin/buy-requests", (_req: Request, res: Response) => {
+    const data = [...buyRequests].reverse();
+    return res.json({ success: true, statusCode: 200, data, message: "Buy Now requests fetched" });
   });
 
   // Legacy/compat endpoint
@@ -762,6 +772,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       br_contact_name: user?.fullName || req.body?.contact_name || "Unknown Buyer",
       br_contact_phone: user?.phone || req.body?.contact_phone || "",
       br_contact_email: user?.email || req.body?.contact_email || "",
+      br_listing_title: req.body?.listing_title || "",
+      br_listing_price: Number(req.body?.listing_price) || 0,
       br_created_at: new Date().toISOString(),
     });
 

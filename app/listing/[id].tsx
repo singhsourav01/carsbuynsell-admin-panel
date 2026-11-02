@@ -20,6 +20,7 @@ import { formatCurrency, isAuctionEnded } from "@/utils/formatters";
 import { CountdownTimer } from "@/components/CountdownTimer";
 import { apiRequestDirect, getToken } from "@/lib/auth";
 import { SubscriptionModal } from "@/components/SubscriptionModal";
+import { BuyConfirmModal } from "@/components/BuyConfirmModal";
 import { canBidOn, fetchMySubscription, SLOTS_FULL_MESSAGE } from "@/lib/subscription";
 
 const { width } = Dimensions.get("window");
@@ -39,6 +40,8 @@ export default function ListingDetailScreen() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [activeImageIdx, setActiveImageIdx] = useState(0);
+    const [buyConfirmVisible, setBuyConfirmVisible] = useState(false);
+    const [isBuying, setIsBuying] = useState(false);
     const [subVisible, setSubVisible] = useState(false);
     const [pendingAction, setPendingAction] = useState<"bid" | "buy" | null>(null);
     const [bids, setBids] = useState<any[]>([]);
@@ -116,7 +119,10 @@ export default function ListingDetailScreen() {
             const res = await apiRequestDirect(
                 "POST",
                 `http://65.2.10.30:3002/user/listings/${id}/buy`,
-                {},
+                {
+                    listing_title: listing.lst_title,
+                    listing_price: Number(listing.lst_price) || 0,
+                },
                 true,
             );
             const rawText = await res.text();
@@ -124,7 +130,7 @@ export default function ListingDetailScreen() {
             try { data = JSON.parse(rawText); } catch { data = {}; }
             if (res.ok) {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                Alert.alert("Request Recorded", data?.message || "Contact details saved. Vehicle remains visible to users.");
+                Alert.alert("Purchase Successful!", data?.message || "You have successfully purchased this vehicle.");
             } else {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                 Alert.alert("Purchase Failed", data?.message || "Something went wrong. Please try again.");
@@ -149,7 +155,7 @@ export default function ListingDetailScreen() {
 
             if (sub && (action === "buy" || canBidOn(sub, String(id)))) {
                 if (action === "buy") {
-                    handleBuyNow();
+                    setBuyConfirmVisible(true);
                 } else if (action === "bid") {
                     const cp = isAuction ? Number(listing.lst_current_bid || listing.lst_price || 0) : 0;
                     const mi = Number(listing.lst_min_increment || 1);
@@ -487,13 +493,27 @@ export default function ListingDetailScreen() {
                 </View>
             )}
 
+            <BuyConfirmModal
+                visible={buyConfirmVisible}
+                title={listing?.lst_title}
+                priceLabel={formatCurrency(currentPrice)}
+                loading={isBuying}
+                onCancel={() => setBuyConfirmVisible(false)}
+                onBuy={async () => {
+                    setIsBuying(true);
+                    await handleBuyNow();
+                    setIsBuying(false);
+                    setBuyConfirmVisible(false);
+                }}
+            />
+
             <SubscriptionModal
                 visible={subVisible}
                 onClose={() => { setSubVisible(false); setPendingAction(null); }}
                 onSuccess={() => {
                     setSubVisible(false);
                     if (pendingAction === "buy") {
-                        handleBuyNow();
+                        setBuyConfirmVisible(true);
                     } else if (pendingAction === "bid") {
                         const currentPrice = isAuction ? Number(listing.lst_current_bid || listing.lst_price || 0) : 0;
                         const minIncrement = Number(listing.lst_min_increment || 1);

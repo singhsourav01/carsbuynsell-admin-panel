@@ -14,7 +14,7 @@ const NAV_ITEMS = [
     { path: '/listings', icon: Car, label: 'Listings', roles: ['admin', 'moderator'] },
     { path: '/auctions', icon: Zap, label: 'Auctions', roles: ['admin', 'moderator'] },
     { path: '/sell-requests', icon: ClipboardList, label: 'Sell Requests', roles: ['admin', 'moderator'] },
-    { path: '/deals', icon: Handshake, label: 'Deals', roles: ['admin'] },
+    { path: '/deals', icon: Handshake, label: 'Buy Now Requests', roles: ['admin'] },
     { path: '/categories', icon: FolderOpen, label: 'Categories', roles: ['admin'] },
     { path: '/subscriptions', icon: CreditCard, label: 'Subscriptions', roles: ['admin'] },
     { path: '/reports', icon: BarChart3, label: 'Reports', roles: ['admin'] },
